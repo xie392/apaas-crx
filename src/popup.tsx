@@ -133,6 +133,16 @@ function Popup() {
       return
     }
 
+    // 如果替换功能被禁用，添加提示
+    if (!isEnabled) {
+      setStatus({
+        type: "info",
+        message: "注意：脚本替换功能当前已禁用。文件将被处理但不会被应用，请手动启用替换功能。"
+      })
+      // 等待2秒让用户看到消息
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+
     setStatus({ type: "processing", message: "正在处理文件..." })
     setProgress({ step: "准备", percent: 0, details: "准备处理文件..." })
 

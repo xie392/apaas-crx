@@ -38,6 +38,29 @@ chrome.runtime.onInstalled.addListener(() => {
   })
 })
 
+// 监听浏览器启动，确保规则正确应用
+chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.local.get(["appState"], (result) => {
+    if (result.appState) {
+      appState = result.appState
+      console.log("Loaded state on startup:", appState)
+      
+      // 检查并应用规则
+      if (appState.outputName && appState.enabled) {
+        updateRedirectRules()
+      } else if (!appState.enabled) {
+        // 确保禁用状态下没有任何规则
+        chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
+          chrome.declarativeNetRequest.updateDynamicRules({
+            removeRuleIds: existingRules.map(rule => rule.id),
+            addRules: []
+          })
+        })
+      }
+    }
+  })
+})
+
 // 保存应用状态
 function saveAppState() {
   // 添加最后更新时间
@@ -173,7 +196,7 @@ async function processUploadedFiles(
     // 保存状态
     appState = {
       outputName,
-      enabled: true,
+      enabled: appState.enabled, // 保持用户设置的启用状态
       rules: {
         js: Object.keys(filesToSave).find((f) => f.endsWith(".umd.js")),
         css: Object.keys(filesToSave).find((f) => f.endsWith(".css")),
@@ -704,20 +727,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 // 处理文件请求
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    // 从storage获取文件内容并返回
-    // 这部分需要进一步实现
-    return { cancel: false }
-  },
-  { urls: ["<all_urls>"] },
-  ["blocking"]
-)
+// chrome.webRequest.onBeforeRequest.addListener(
+//   (details) => {
+//     // 从storage获取文件内容并返回
+//     // 这部分需要进一步实现
+//     return { cancel: false }
+//   },
+//   { urls: ["<all_urls>"] },
+//   ["blocking"]
+// )
 
 // 配置匹配规则，使本地脚本可以被网页访问
 export const config = {
   get matches() {
-    return [appState.matchPattern, "<all_urls>"];
+    return [appState.matchPattern];
   }
 }
 
