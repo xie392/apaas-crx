@@ -13,12 +13,14 @@ interface AppState {
   zipData?: Uint8Array
   lastUpdated?: number
   enabled: boolean // 添加启用/禁用标志
+  matchPattern: string // 添加URL匹配模式
 }
 
 let appState: AppState = {
   outputName: "",
   rules: {},
-  enabled: false // 默认为禁用状态
+  enabled: false, // 默认为禁用状态
+  matchPattern: "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*" // 默认匹配模式
 }
 
 // 初始化时从storage加载上一次的状态
@@ -177,7 +179,8 @@ async function processUploadedFiles(
         css: Object.keys(filesToSave).find((f) => f.endsWith(".css")),
         worker: Object.keys(filesToSave).find((f) => f.endsWith(".umd.worker.js"))
       },
-      zipData: new Uint8Array(zipData)
+      zipData: new Uint8Array(zipData),
+      matchPattern: appState.matchPattern // 保持原有的匹配模式
     }
 
     progressCallback({
@@ -467,11 +470,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.action === "updateMatchPattern") {
+    // 更新匹配模式
+    appState.matchPattern = message.pattern || "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
+    // 保存状态
+    saveAppState()
+    sendResponse({ success: true, matchPattern: appState.matchPattern })
+    return true
+  }
+
   if (message.action === "getActiveRules") {
     sendResponse({
       rules: appState.rules,
       lastUpdated: appState.lastUpdated,
-      enabled: appState.enabled // 添加enabled状态到响应
+      enabled: appState.enabled, // 添加enabled状态到响应
+      matchPattern: appState.matchPattern // 添加matchPattern到响应
     })
     return true
   }
@@ -703,7 +716,9 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 // 配置匹配规则，使本地脚本可以被网页访问
 export const config = {
-  matches: ["http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*", "<all_urls>"]
+  get matches() {
+    return [appState.matchPattern, "<all_urls>"];
+  }
 }
 
 // 解压缩数据

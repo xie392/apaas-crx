@@ -83,6 +83,8 @@ function Popup() {
   const [progress, setProgress] = useState<ProgressInfo | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isEnabled, setIsEnabled] = useState(false)
+  const [matchPattern, setMatchPattern] = useState<string>("http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*")
+  const [isEditingPattern, setIsEditingPattern] = useState(false)
 
   // 加载当前规则状态
   useEffect(() => {
@@ -93,6 +95,7 @@ function Popup() {
           setLastUpdated(response.lastUpdated)
         }
         setIsEnabled(response.enabled || false)
+        setMatchPattern(response.matchPattern || "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*")
       }
     })
 
@@ -314,6 +317,50 @@ function Popup() {
     })
   }
 
+  // 处理匹配模式变化
+  const handleMatchPatternChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMatchPattern(e.target.value);
+  }
+
+  // 处理匹配模式保存
+  const handleMatchPatternSave = () => {
+    let pattern = matchPattern.trim();
+    
+    // 确保匹配模式有效并且末尾有通配符
+    if (!pattern) {
+      pattern = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*";
+    } else if (!pattern.endsWith('*')) {
+      // 如果不是以通配符结尾，确保有合适的结尾
+      if (!pattern.endsWith('/')) {
+        pattern += '/';
+      }
+      pattern += '*';
+    }
+    
+    // 发送消息到后台更新匹配模式
+    chrome.runtime.sendMessage({
+      action: "updateMatchPattern",
+      pattern: pattern
+    }, (response) => {
+      if (response && response.success) {
+        setMatchPattern(response.matchPattern);
+        setIsEditingPattern(false);
+        setStatus({
+          type: "success",
+          message: "URL匹配模式已更新"
+        });
+        
+        // 2秒后清除状态消息
+        setTimeout(() => {
+          setStatus({
+            type: null,
+            message: ""
+          });
+        }, 2000);
+      }
+    });
+  }
+
   return (
     <div className="tw-w-[450px] tw-p-6 tw-font-sans tw-bg-gray-50">
       <h1 className="tw-text-xl tw-font-bold tw-text-gray-800 tw-mb-4">
@@ -332,6 +379,47 @@ function Popup() {
             className={`tw-inline-block tw-h-4 tw-w-4 tw-transform tw-rounded-full tw-bg-white tw-transition-transform ${isEnabled ? 'tw-translate-x-6' : 'tw-translate-x-1'}`}
           />
         </button>
+      </div>
+      
+      {/* 添加URL匹配模式设置 */}
+      <div className="tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
+        <div className="tw-px-2 tw-py-3 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-justify-between">
+          <span className="tw-text-sm tw-font-medium tw-text-gray-700">URL匹配模式</span>
+          <button 
+            className="tw-text-xs tw-text-primary-500 tw-hover:text-primary-700"
+            onClick={() => setIsEditingPattern(!isEditingPattern)}
+          >
+            {isEditingPattern ? "取消" : "编辑"}
+          </button>
+        </div>
+        <div className="tw-px-2 tw-py-3">
+          {isEditingPattern ? (
+            <div className="tw-flex tw-flex-col tw-space-y-2">
+              <input 
+                type="text" 
+                value={matchPattern}
+                onChange={handleMatchPatternChange}
+                className="tw-w-full tw-px-2 tw-py-1 tw-border tw-border-gray-300 tw-rounded-md tw-text-sm"
+                placeholder="输入URL匹配模式，例如：http://example.com/*"
+              />
+              <div className="tw-flex tw-justify-end">
+                <button
+                  className="tw-text-xs tw-px-2 tw-py-1 tw-bg-primary-500 tw-text-white tw-rounded-md tw-hover:bg-primary-600"
+                  onClick={handleMatchPatternSave}
+                >
+                  保存
+                </button>
+              </div>
+              <p className="tw-text-xs tw-text-gray-500">
+                输入要匹配的URL模式，使用 * 作为通配符。例如：http://example.com/* 将匹配该域名下的所有页面。
+              </p>
+            </div>
+          ) : (
+            <div className="tw-text-sm tw-break-all tw-text-gray-800">
+              {matchPattern}
+            </div>
+          )}
+        </div>
       </div>
       
       {/* 当脚本替换禁用时显示提示 */}
