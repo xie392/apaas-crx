@@ -8,3 +8,25 @@
   all: initial;
   box-sizing: border-box;
 }
+
+@layer components {
+  .tw-btn {
+    @apply tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-transition-all tw-duration-200 tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-offset-2 tw-disabled:opacity-50 tw-disabled:cursor-not-allowed;
+  }
+
+  .tw-btn-primary {
+    @apply tw-bg-primary-500 tw-hover:bg-primary-600 tw-text-white tw-focus:ring-primary-500;
+  }
+
+  .tw-btn-secondary {
+    @apply tw-bg-gray-200 tw-hover:bg-gray-300 tw-text-gray-700 tw-focus:ring-gray-400;
+  }
+
+  .tw-card {
+    @apply tw-bg-white tw-rounded-lg tw-shadow-md tw-p-6;
+  }
+
+  .tw-input-field {
+    @apply tw-block tw-w-full tw-rounded-md tw-border-gray-300 tw-shadow-sm tw-focus:border-primary-500 tw-focus:ring tw-focus:ring-primary-500 tw-focus:ring-opacity-50;
+  }
+}
