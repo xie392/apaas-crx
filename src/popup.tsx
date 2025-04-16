@@ -82,6 +82,7 @@ function Popup() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [progress, setProgress] = useState<ProgressInfo | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isEnabled, setIsEnabled] = useState(false)
 
   // 加载当前规则状态
   useEffect(() => {
@@ -91,6 +92,7 @@ function Popup() {
         if (response.lastUpdated) {
           setLastUpdated(response.lastUpdated)
         }
+        setIsEnabled(response.enabled || false)
       }
     })
 
@@ -300,11 +302,49 @@ function Popup() {
     </div>
   )
 
+  // 处理开关切换
+  const handleToggleEnabled = () => {
+    const newEnabledState = !isEnabled
+    setIsEnabled(newEnabledState)
+    
+    // 发送消息到后台更新状态
+    chrome.runtime.sendMessage({
+      action: "toggleEnabled",
+      enabled: newEnabledState
+    })
+  }
+
   return (
     <div className="tw-w-[450px] tw-p-6 tw-font-sans tw-bg-gray-50">
       <h1 className="tw-text-xl tw-font-bold tw-text-gray-800 tw-mb-4">
         APaaS 脚本替换工具
       </h1>
+
+      {/* 添加启用/禁用开关 */}
+      <div className="tw-flex tw-items-center tw-justify-between tw-px-2 tw-py-3 tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
+        <span className="tw-text-sm tw-font-medium tw-text-gray-700">启用脚本替换</span>
+        <button 
+          className={`tw-relative tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors ${isEnabled ? 'tw-bg-primary-500' : 'tw-bg-gray-300'}`}
+          onClick={handleToggleEnabled}
+        >
+          <span className="tw-sr-only">启用脚本替换</span>
+          <span 
+            className={`tw-inline-block tw-h-4 tw-w-4 tw-transform tw-rounded-full tw-bg-white tw-transition-transform ${isEnabled ? 'tw-translate-x-6' : 'tw-translate-x-1'}`}
+          />
+        </button>
+      </div>
+      
+      {/* 当脚本替换禁用时显示提示 */}
+      {!isEnabled && Object.keys(activeRules).length > 0 && (
+        <div className="tw-mb-4 tw-p-3 tw-rounded-md tw-bg-yellow-50 tw-text-yellow-800 tw-border tw-border-yellow-200">
+          <div className="tw-flex">
+            <svg className="tw-h-5 tw-w-5 tw-text-yellow-500 tw-mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <span>脚本替换功能已禁用，启用后才会替换文件</span>
+          </div>
+        </div>
+      )}
 
       {/* 文件上传区域 */}
       <div
@@ -483,20 +523,25 @@ function Popup() {
       {/* 当前活动规则 */}
       {Object.keys(activeRules).length > 0 && (
         <div className="tw-mt-6 tw-bg-white tw-p-4 tw-rounded-md tw-shadow-sm">
-          <h2 className="tw-text-sm tw-font-semibold tw-text-gray-700 tw-mb-2 tw-flex tw-items-center">
-            <svg
-              className="tw-w-4 tw-h-4 tw-mr-1 tw-text-primary-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-            </svg>
-            当前活动规则
+          <h2 className="tw-text-sm tw-font-semibold tw-text-gray-700 tw-mb-2 tw-flex tw-items-center tw-justify-between">
+            <div className="tw-flex tw-items-center">
+              <svg
+                className="tw-w-4 tw-h-4 tw-mr-1 tw-text-primary-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+              </svg>
+              当前活动规则
+            </div>
+            <span className={`tw-text-xs tw-px-2 tw-py-1 tw-rounded ${isEnabled ? 'tw-bg-success-100 tw-text-success-800' : 'tw-bg-gray-100 tw-text-gray-600'}`}>
+              {isEnabled ? '已启用' : '已禁用'}
+            </span>
           </h2>
           {lastUpdated && (
             <p className="tw-text-xs tw-text-gray-500 tw-mb-2">
@@ -510,7 +555,7 @@ function Popup() {
                   {activeRules.js}
                 </span>
                 <span className="tw-inline-block tw-w-14 tw-text-xs tw-font-medium tw-text-gray-600 tw-text-right">
-                  JS
+                  js
                 </span>
               </div>
             )}
