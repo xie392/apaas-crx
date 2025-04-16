@@ -1,11 +1,15 @@
 import type { PlasmoCSConfig } from "plasmo"
+import { LOG_PREFIX, MESSAGE_TYPES } from "./constants"
+import { getFileNameFromUrl } from "./utils/url"
 
 // 配置内容脚本的匹配规则
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"]
 }
 
-// 在页面加载时将URL处理函数注入到页面中
+/**
+ * 在页面加载时将URL处理函数注入到页面中
+ */
 function injectURLHandlerScript() {
   // 首先检查扩展是否启用，并且当前URL是否匹配配置的模式
   chrome.runtime.sendMessage(
@@ -14,8 +18,9 @@ function injectURLHandlerScript() {
       currentUrl: window.location.href
     },
     (response) => {
+      // 禁用时不用处理
       if (!response || !response.shouldInject) {
-        console.log("[APaaS] - URL not matched, skipping")
+        console.log(`${LOG_PREFIX} 已禁用脚本替换功能`)
         return
       }
 
@@ -36,25 +41,28 @@ window.addEventListener("message", async (event) => {
   if (event.source !== window) return
 
   const data = event.data
-  if (!data || data.type !== "CHECK_RESOURCE") return
+  if (!data || data.type !== MESSAGE_TYPES.CHECK_RESOURCE) return
 
   // 检查URL是否匹配我们保存的资源
   const url = data.url
   const fileName = getFileNameFromUrl(url)
+
+  console.log(`${LOG_PREFIX} 收到资源检查请求:`, { url, fileName })
 
   // 向扩展背景页发送消息，查询是否有缓存的资源
   chrome.runtime.sendMessage(
     {
       action: "getResource",
       fileName,
-      url: url // Include URL for pattern matching
+      url: url // 包含URL用于模式匹配
     },
     (response) => {
       if (response && response.exists) {
+        console.log(`${LOG_PREFIX} 找到替换资源:`, fileName)
         // 如果资源存在，我们向页面发送消息
         window.postMessage(
           {
-            type: "RESOURCE_RESPONSE",
+            type: MESSAGE_TYPES.RESOURCE_RESPONSE,
             forUrl: url,
             replace: true,
             dataUrl: response.dataUrl
@@ -62,10 +70,11 @@ window.addEventListener("message", async (event) => {
           "*"
         )
       } else {
+        console.log(`${LOG_PREFIX} 未找到替换资源:`, fileName)
         // 如果资源不存在，我们通知页面继续原始请求
         window.postMessage(
           {
-            type: "RESOURCE_RESPONSE",
+            type: MESSAGE_TYPES.RESOURCE_RESPONSE,
             forUrl: url,
             replace: false
           },
@@ -75,20 +84,6 @@ window.addEventListener("message", async (event) => {
     }
   )
 })
-
-// 从URL中提取文件名
-function getFileNameFromUrl(url: string): string {
-  try {
-    const urlObj = new URL(url)
-    const pathParts = urlObj.pathname.split("/")
-    const fileName = pathParts[pathParts.length - 1]
-    return fileName
-  } catch (e) {
-    // 如果URL解析失败，我们尝试使用正则表达式提取最后一部分
-    const matches = url.match(/([^/]+)$/)
-    return matches ? matches[1] : url
-  }
-}
 
 // 当DOM加载完成后执行脚本注入
 document.addEventListener("DOMContentLoaded", injectURLHandlerScript)

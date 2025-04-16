@@ -1,5 +1,16 @@
-// 这是一个后台脚本，用于拦截网络请求并替换JavaScript文件
 import JSZip from "jszip"
+
+import {
+  DEFAULT_MATCH_PATTERN,
+  IMPORTANT_JS_PATTERNS,
+  LOG_PREFIX
+} from "~/constants"
+import {
+  decompressData,
+  getStorageUsage,
+  saveFileToAssets
+} from "~/utils/storage"
+import { extractDomainFromPattern, urlMatchesPattern } from "~/utils/url"
 
 // 存储已经设置的规则和文件信息
 interface AppState {
@@ -12,15 +23,15 @@ interface AppState {
   }
   zipData?: Uint8Array
   lastUpdated?: number
-  enabled: boolean // 添加启用/禁用标志
-  matchPattern: string // 添加URL匹配模式
+  enabled: boolean // 启用/禁用标志
+  matchPattern: string // URL匹配模式
 }
 
 let appState: AppState = {
   outputName: "",
   rules: {},
   enabled: false, // 默认为禁用状态
-  matchPattern: "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*" // 默认匹配模式
+  matchPattern: DEFAULT_MATCH_PATTERN // 默认匹配模式
 }
 
 // 初始化时从storage加载上一次的状态
@@ -44,7 +55,7 @@ chrome.runtime.onStartup.addListener(() => {
     if (result.appState) {
       appState = result.appState
       console.log("Loaded state on startup:", appState)
-      
+
       // 检查并应用规则
       if (appState.outputName && appState.enabled) {
         updateRedirectRules()
@@ -52,7 +63,7 @@ chrome.runtime.onStartup.addListener(() => {
         // 确保禁用状态下没有任何规则
         chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
           chrome.declarativeNetRequest.updateDynamicRules({
-            removeRuleIds: existingRules.map(rule => rule.id),
+            removeRuleIds: existingRules.map((rule) => rule.id),
             addRules: []
           })
         })
@@ -83,7 +94,7 @@ function updateRedirectRules() {
           addRules: []
         },
         () => {
-          console.log("已禁用脚本替换功能")
+          console.log(`${LOG_PREFIX} 已禁用脚本替换功能`)
           saveAppState()
         }
       )
@@ -92,26 +103,8 @@ function updateRedirectRules() {
   }
 
   // 从匹配模式中提取域名部分，用于更精确的匹配
-  let domain = "";
-  try {
-    let basePattern = appState.matchPattern;
-    // 移除末尾的通配符
-    if (basePattern.endsWith('*')) {
-      basePattern = basePattern.slice(0, -1);
-    }
-    if (basePattern.endsWith('/')) {
-      basePattern = basePattern.slice(0, -1);
-    }
-    
-    // 提取域名
-    const patternUrl = new URL(basePattern);
-    domain = patternUrl.hostname;
-    console.log(`从匹配模式中提取域名: ${domain}`);
-  } catch (e) {
-    console.error("提取域名失败:", e);
-    // 如果提取失败，使用原始匹配模式
-    domain = appState.matchPattern.replace(/^https?:\/\//, '').split('/')[0];
-  }
+  const domain = extractDomainFromPattern(appState.matchPattern)
+  console.log(`${LOG_PREFIX} 从匹配模式中提取域名: ${domain}`)
 
   // 构建所有需要重定向的文件映射
   const scriptMappings: Record<string, string> = {}
@@ -125,7 +118,7 @@ function updateRedirectRules() {
     const cssFileName = `${appState.outputName}.css`
     scriptMappings[`*${cssFileName}`] = cssFileName
   }
-  
+
   // Worker文件映射（如果有）
   if (appState.rules.worker) {
     const workerFileName = `${appState.outputName}.umd.worker.js`
@@ -202,7 +195,7 @@ async function processUploadedFiles(
     const storageInfo = await getStorageUsage()
     const availableSpace = storageInfo.quotaBytes - storageInfo.usedBytes
     console.log(
-      `Storage: ${storageInfo.usedBytes / 1024 / 1024}MB used of ${storageInfo.quotaBytes / 1024 / 1024}MB quota`
+      `${LOG_PREFIX} Storage: ${storageInfo.usedBytes / 1024 / 1024}MB used of ${storageInfo.quotaBytes / 1024 / 1024}MB quota`
     )
 
     // 计算需要保存的主要文件大小
@@ -224,7 +217,9 @@ async function processUploadedFiles(
       rules: {
         js: Object.keys(filesToSave).find((f) => f.endsWith(".umd.js")),
         css: Object.keys(filesToSave).find((f) => f.endsWith(".css")),
-        worker: Object.keys(filesToSave).find((f) => f.endsWith(".umd.worker.js"))
+        worker: Object.keys(filesToSave).find((f) =>
+          f.endsWith(".umd.worker.js")
+        )
       },
       zipData: new Uint8Array(zipData),
       matchPattern: appState.matchPattern // 保持原有的匹配模式
@@ -294,23 +289,12 @@ async function processUploadedFiles(
       remainingSpace -= safetyBuffer
 
       // 优先保存小文件和可能重要的文件
-      const importantPatterns = [
-        "chunk-",
-        "vendor",
-        "polyfill",
-        "runtime",
-        "main",
-        "app",
-        "index",
-        "bundle"
-      ]
-
       // 按优先级重新排序
       jsFilesWithSize.sort((a, b) => {
-        const aIsImportant = importantPatterns.some((pattern) =>
+        const aIsImportant = IMPORTANT_JS_PATTERNS.some((pattern) =>
           a.filename.includes(pattern)
         )
-        const bIsImportant = importantPatterns.some((pattern) =>
+        const bIsImportant = IMPORTANT_JS_PATTERNS.some((pattern) =>
           b.filename.includes(pattern)
         )
 
@@ -380,110 +364,7 @@ async function processUploadedFiles(
   }
 }
 
-// 获取存储使用情况
-function getStorageUsage(): Promise<{ usedBytes: number; quotaBytes: number }> {
-  return new Promise((resolve) => {
-    chrome.storage.local.getBytesInUse(null, (usedBytes) => {
-      chrome.storage.local.get(null, () => {
-        const quotaBytes = chrome.runtime.lastError
-          ? 5 * 1024 * 1024 // 默认5MB
-          : chrome.storage.local.QUOTA_BYTES || 5 * 1024 * 1024
-
-        resolve({ usedBytes, quotaBytes })
-      })
-    })
-  })
-}
-
-// 辅助函数：保存文件到assets目录
-async function saveFileToAssets(
-  fileName: string,
-  fileContent: ArrayBuffer
-): Promise<void> {
-  // 对于超过1MB的文件，使用更高效的存储方式
-  const MAX_DIRECT_SAVE_SIZE = 1024 * 1024 // 1MB
-
-  if (fileContent.byteLength <= MAX_DIRECT_SAVE_SIZE) {
-    // 对于小文件，直接保存为数据URL
-    return new Promise((resolve, reject) => {
-      const fileBlob = new Blob([fileContent])
-      const reader = new FileReader()
-
-      reader.onload = () => {
-        const dataUrl = reader.result as string
-
-        // 使用Storage API保存文件
-        const fileKey = `asset_${fileName}`
-        chrome.storage.local.set({ [fileKey]: dataUrl }, () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError)
-          } else {
-            resolve()
-          }
-        })
-      }
-
-      reader.onerror = () => {
-        reject(new Error("Failed to read file"))
-      }
-
-      reader.readAsDataURL(fileBlob)
-    })
-  } else {
-    // 对于大文件，压缩并拆分存储
-    try {
-      // 使用更高效的存储格式
-      const uint8Array = new Uint8Array(fileContent)
-
-      // 注册主文件条目，记录大小和分块信息
-      const fileKey = `asset_${fileName}`
-      const fileMetadata = {
-        type: "arraybuffer",
-        size: fileContent.byteLength,
-        chunks: 1
-      }
-
-      // 压缩数据以节省空间
-      const compressedData = await compressData(uint8Array)
-
-      // 保存文件主条目
-      await new Promise<void>((resolve, reject) => {
-        chrome.storage.local.set(
-          {
-            [fileKey]: fileMetadata,
-            [`${fileKey}_chunk0`]: compressedData
-          },
-          () => {
-            if (chrome.runtime.lastError) {
-              reject(chrome.runtime.lastError)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
-
-      return Promise.resolve()
-    } catch (e) {
-      return Promise.reject(e)
-    }
-  }
-}
-
-// 压缩二进制数据（使用TextEncoder和GZIP压缩算法的思路）
-async function compressData(data: Uint8Array): Promise<string> {
-  // 这里我们不实际实现压缩（需要额外库），
-  // 而是尽量优化存储格式，从base64切换为arrayBuffer的二进制存储
-
-  // 将二进制数据转换为Base64字符串，但比dataURL更紧凑
-  let binary = ""
-  const bytes = new Uint8Array(data)
-  const len = bytes.byteLength
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
-}
+// 这些函数已移至utils/storage.ts
 
 // 监听来自popup的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -519,7 +400,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === "updateMatchPattern") {
     // 更新匹配模式
-    appState.matchPattern = message.pattern || "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
+    appState.matchPattern =
+      message.pattern || "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
     // 保存状态
     saveAppState()
     sendResponse({ success: true, matchPattern: appState.matchPattern })
@@ -538,14 +420,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 处理获取资源请求
   if (message.action === "getResource") {
-    const fileName = message.fileName;
-    const fileKey = `asset_${fileName}`;
-    
+    const fileName = message.fileName
+    const fileKey = `asset_${fileName}`
+
     // 检查请求的URL是否匹配设置的模式
     if (message.url && !urlMatchesPattern(message.url, appState.matchPattern)) {
-      console.log(`URL不匹配: ${message.url} 不匹配 ${appState.matchPattern}`);
-      sendResponse({ exists: false, error: "URL不匹配配置的模式" });
-      return true;
+      console.log(`URL不匹配: ${message.url} 不匹配 ${appState.matchPattern}`)
+      sendResponse({ exists: false, error: "URL不匹配配置的模式" })
+      return true
     }
 
     chrome.storage.local.get([fileKey], (result) => {
@@ -757,18 +639,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "checkUrlAndEnabledState") {
-    const currentUrl = message.currentUrl;
+    const currentUrl = message.currentUrl
     // Only inject if extension is enabled AND URL matches the pattern
-    const shouldInject = appState.enabled && urlMatchesPattern(currentUrl, appState.matchPattern);
-    
-    console.log(`URL check: ${currentUrl}, Pattern: ${appState.matchPattern}, Enabled: ${appState.enabled}, Should inject: ${shouldInject}`);
-    
+    const shouldInject =
+      appState.enabled && urlMatchesPattern(currentUrl, appState.matchPattern)
+
+    console.log(
+      `URL check: ${currentUrl}, Pattern: ${appState.matchPattern}, Enabled: ${appState.enabled}, Should inject: ${shouldInject}`
+    )
+
     sendResponse({
       shouldInject: shouldInject,
       matchPattern: appState.matchPattern,
       enabled: appState.enabled
-    });
-    return true;
+    })
+    return true
   }
 })
 
@@ -786,49 +671,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // 配置匹配规则，使本地脚本可以被网页访问
 export const config = {
   get matches() {
-    return [appState.matchPattern];
-  }
-}
-
-// 解压缩数据
-function decompressData(compressedBase64: string): Uint8Array {
-  // 将Base64字符串转回二进制数据
-  const binary = atob(compressedBase64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return bytes
-}
-
-// 判断URL是否匹配指定的模式
-function urlMatchesPattern(url: string, pattern: string): boolean {
-  try {
-    // 解析URL和模式为URL对象
-    const urlObj = new URL(url);
-    
-    // 移除模式末尾的通配符，获取基本URL部分
-    let basePattern = pattern;
-    if (basePattern.endsWith('*')) {
-      basePattern = basePattern.slice(0, -1);
-    }
-    
-    if (basePattern.endsWith('/')) {
-      basePattern = basePattern.slice(0, -1);
-    }
-    
-    // 检查URL是否以模式开头
-    const urlString = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? ':' + urlObj.port : ''}`;
-    
-    // 标准化URL和模式（去掉协议开头的多余部分）
-    const normalizedUrl = urlString.replace(/^https?:\/\//, '');
-    const normalizedPattern = basePattern.replace(/^https?:\/\//, '');
-    
-    console.log(`比较URL: ${normalizedUrl} 与模式: ${normalizedPattern}`);
-    
-    return normalizedUrl.startsWith(normalizedPattern);
-  } catch (e) {
-    console.error("URL匹配错误:", e);
-    return false;
+    return [appState.matchPattern]
   }
 }
