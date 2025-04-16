@@ -18,11 +18,13 @@ function injectURLHandlerScript() {
       window.fetch = async function(resource, options) {
         const url = resource instanceof Request ? resource.url : resource;
         
-        // 检查URL是否匹配我们要替换的资源（只替换JS、CSS和Worker文件）
+        // 检查URL是否匹配我们要替换的资源
         if (typeof url === 'string' && 
             (url.includes('.umd.js') || 
              url.includes('.css') || 
-             url.includes('.worker.js'))) {
+             url.includes('.worker.js') ||
+             url.includes('static/') || 
+             url.includes('public/'))) {
           
           console.log('[APaaS Injector] Intercepted fetch request:', url);
           
@@ -73,7 +75,9 @@ function injectURLHandlerScript() {
         if (typeof url === 'string' && 
             (url.includes('.umd.js') || 
              url.includes('.css') || 
-             url.includes('.worker.js'))) {
+             url.includes('.worker.js') ||
+             url.includes('static/') || 
+             url.includes('public/'))) {
           
           console.log('[APaaS Injector] Intercepted XHR request:', url);
           this._apaasUrl = url;
@@ -156,4 +160,4 @@ document.addEventListener('DOMContentLoaded', injectURLHandlerScript);
 // 立即执行脚本注入，以防DOMContentLoaded已经触发
 if (document.readyState === 'interactive' || document.readyState === 'complete') {
   injectURLHandlerScript();
-}
+} 

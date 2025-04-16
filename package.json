@@ -37,9 +37,7 @@
     "permissions": [
       "declarativeNetRequest",
       "storage",
-      "webRequest",
-      "webRequestBlocking",
-      "declarativeNetRequestWithHostAccess"
+      "webRequest"
     ],
     "web_accessible_resources": [
       {
