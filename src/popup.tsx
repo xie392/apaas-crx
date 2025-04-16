@@ -18,55 +18,7 @@ interface ActiveRules {
   other?: string[]
 }
 
-// 样式
-const styles = {
-  container: {
-    width: "400px",
-    padding: "20px",
-    fontFamily: "Arial, sans-serif"
-  },
-  title: {
-    fontSize: "18px",
-    fontWeight: "bold",
-    marginBottom: "15px"
-  },
-  uploadSection: {
-    border: "2px dashed #ccc",
-    padding: "20px",
-    textAlign: "center" as const,
-    marginBottom: "15px",
-    borderRadius: "4px",
-    cursor: "pointer"
-  },
-  button: {
-    backgroundColor: "#4285f4",
-    color: "white",
-    border: "none",
-    padding: "8px 16px",
-    borderRadius: "4px",
-    cursor: "pointer",
-    fontSize: "14px"
-  },
-  fileInfo: {
-    marginTop: "10px",
-    padding: "10px",
-    backgroundColor: "#f5f5f5",
-    borderRadius: "4px"
-  },
-  status: {
-    marginTop: "15px",
-    padding: "10px",
-    borderRadius: "4px"
-  },
-  success: {
-    backgroundColor: "#d4edda",
-    color: "#155724"
-  },
-  error: {
-    backgroundColor: "#f8d7da",
-    color: "#721c24"
-  }
-}
+const baseUrl = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
 
 function Popup() {
   // 状态管理
@@ -83,7 +35,7 @@ function Popup() {
   const [progress, setProgress] = useState<ProgressInfo | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isEnabled, setIsEnabled] = useState(false)
-  const [matchPattern, setMatchPattern] = useState<string>("http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*")
+  const [matchPattern, setMatchPattern] = useState<string>(baseUrl)
   const [isEditingPattern, setIsEditingPattern] = useState(false)
 
   // 加载当前规则状态
@@ -95,7 +47,7 @@ function Popup() {
           setLastUpdated(response.lastUpdated)
         }
         setIsEnabled(response.enabled || false)
-        setMatchPattern(response.matchPattern || "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*")
+        setMatchPattern(response.matchPattern || baseUrl)
       }
     })
 
@@ -309,7 +261,7 @@ function Popup() {
   const handleToggleEnabled = () => {
     const newEnabledState = !isEnabled
     setIsEnabled(newEnabledState)
-    
+
     // 发送消息到后台更新状态
     chrome.runtime.sendMessage({
       action: "toggleEnabled",
@@ -319,46 +271,49 @@ function Popup() {
 
   // 处理匹配模式变化
   const handleMatchPatternChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMatchPattern(e.target.value);
+    setMatchPattern(e.target.value)
   }
 
   // 处理匹配模式保存
   const handleMatchPatternSave = () => {
-    let pattern = matchPattern.trim();
-    
+    let pattern = matchPattern.trim()
+
     // 确保匹配模式有效并且末尾有通配符
     if (!pattern) {
-      pattern = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*";
-    } else if (!pattern.endsWith('*')) {
+      pattern = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
+    } else if (!pattern.endsWith("*")) {
       // 如果不是以通配符结尾，确保有合适的结尾
-      if (!pattern.endsWith('/')) {
-        pattern += '/';
+      if (!pattern.endsWith("/")) {
+        pattern += "/"
       }
-      pattern += '*';
+      pattern += "*"
     }
-    
+
     // 发送消息到后台更新匹配模式
-    chrome.runtime.sendMessage({
-      action: "updateMatchPattern",
-      pattern: pattern
-    }, (response) => {
-      if (response && response.success) {
-        setMatchPattern(response.matchPattern);
-        setIsEditingPattern(false);
-        setStatus({
-          type: "success",
-          message: "URL匹配模式已更新"
-        });
-        
-        // 2秒后清除状态消息
-        setTimeout(() => {
+    chrome.runtime.sendMessage(
+      {
+        action: "updateMatchPattern",
+        pattern: pattern
+      },
+      (response) => {
+        if (response && response.success) {
+          setMatchPattern(response.matchPattern)
+          setIsEditingPattern(false)
           setStatus({
-            type: null,
-            message: ""
-          });
-        }, 2000);
+            type: "success",
+            message: "URL匹配模式已更新"
+          })
+
+          // 2秒后清除状态消息
+          setTimeout(() => {
+            setStatus({
+              type: null,
+              message: ""
+            })
+          }, 2000)
+        }
       }
-    });
+    )
   }
 
   return (
@@ -369,34 +324,36 @@ function Popup() {
 
       {/* 添加启用/禁用开关 */}
       <div className="tw-flex tw-items-center tw-justify-between tw-px-2 tw-py-3 tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
-        <span className="tw-text-sm tw-font-medium tw-text-gray-700">启用脚本替换</span>
-        <button 
-          className={`tw-relative tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors ${isEnabled ? 'tw-bg-primary-500' : 'tw-bg-gray-300'}`}
-          onClick={handleToggleEnabled}
-        >
+        <span className="tw-text-sm tw-font-medium tw-text-gray-700">
+          启用脚本替换
+        </span>
+        <button
+          className={`tw-relative tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors ${isEnabled ? "tw-bg-primary-500" : "tw-bg-gray-300"}`}
+          onClick={handleToggleEnabled}>
           <span className="tw-sr-only">启用脚本替换</span>
-          <span 
-            className={`tw-inline-block tw-h-4 tw-w-4 tw-transform tw-rounded-full tw-bg-white tw-transition-transform ${isEnabled ? 'tw-translate-x-6' : 'tw-translate-x-1'}`}
+          <span
+            className={`tw-inline-block tw-h-4 tw-w-4 tw-transform tw-rounded-full tw-bg-white tw-transition-transform ${isEnabled ? "tw-translate-x-6" : "tw-translate-x-1"}`}
           />
         </button>
       </div>
-      
+
       {/* 添加URL匹配模式设置 */}
       <div className="tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
         <div className="tw-px-2 tw-py-3 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-justify-between">
-          <span className="tw-text-sm tw-font-medium tw-text-gray-700">URL匹配模式</span>
-          <button 
+          <span className="tw-text-sm tw-font-medium tw-text-gray-700">
+            URL匹配模式
+          </span>
+          <button
             className="tw-text-xs tw-text-primary-500 tw-hover:text-primary-700"
-            onClick={() => setIsEditingPattern(!isEditingPattern)}
-          >
+            onClick={() => setIsEditingPattern(!isEditingPattern)}>
             {isEditingPattern ? "取消" : "编辑"}
           </button>
         </div>
         <div className="tw-px-2 tw-py-3">
           {isEditingPattern ? (
             <div className="tw-flex tw-flex-col tw-space-y-2">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={matchPattern}
                 onChange={handleMatchPatternChange}
                 className="tw-w-full tw-px-2 tw-py-1 tw-border tw-border-gray-300 tw-rounded-md tw-text-sm"
@@ -405,13 +362,14 @@ function Popup() {
               <div className="tw-flex tw-justify-end">
                 <button
                   className="tw-text-xs tw-px-2 tw-py-1 tw-bg-primary-500 tw-text-white tw-rounded-md tw-hover:bg-primary-600"
-                  onClick={handleMatchPatternSave}
-                >
+                  onClick={handleMatchPatternSave}>
                   保存
                 </button>
               </div>
               <p className="tw-text-xs tw-text-gray-500">
-                输入要匹配的URL模式，使用 * 作为通配符。例如：http://example.com/* 将匹配该域名下的所有页面。
+                输入要匹配的URL模式，使用 *
+                作为通配符。例如：http://example.com/*
+                将匹配该域名下的所有页面。
               </p>
             </div>
           ) : (
@@ -421,13 +379,22 @@ function Popup() {
           )}
         </div>
       </div>
-      
+
       {/* 当脚本替换禁用时显示提示 */}
       {!isEnabled && Object.keys(activeRules).length > 0 && (
         <div className="tw-mb-4 tw-p-3 tw-rounded-md tw-bg-yellow-50 tw-text-yellow-800 tw-border tw-border-yellow-200">
           <div className="tw-flex">
-            <svg className="tw-h-5 tw-w-5 tw-text-yellow-500 tw-mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            <svg
+              className="tw-h-5 tw-w-5 tw-text-yellow-500 tw-mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
             </svg>
             <span>脚本替换功能已禁用，启用后才会替换文件</span>
           </div>
@@ -627,8 +594,9 @@ function Popup() {
               </svg>
               当前活动规则
             </div>
-            <span className={`tw-text-xs tw-px-2 tw-py-1 tw-rounded ${isEnabled ? 'tw-bg-success-100 tw-text-success-800' : 'tw-bg-gray-100 tw-text-gray-600'}`}>
-              {isEnabled ? '已启用' : '已禁用'}
+            <span
+              className={`tw-text-xs tw-px-2 tw-py-1 tw-rounded ${isEnabled ? "tw-bg-success-100 tw-text-success-800" : "tw-bg-gray-100 tw-text-gray-600"}`}>
+              {isEnabled ? "已启用" : "已禁用"}
             </span>
           </h2>
           {lastUpdated && (
