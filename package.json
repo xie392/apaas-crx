@@ -47,6 +47,14 @@
         "matches": [
           "<all_urls>"
         ]
+      },
+      {
+        "resources": [
+          "inject.js"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
       }
     ]
   }

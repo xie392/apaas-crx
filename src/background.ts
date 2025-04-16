@@ -91,6 +91,28 @@ function updateRedirectRules() {
     return
   }
 
+  // 从匹配模式中提取域名部分，用于更精确的匹配
+  let domain = "";
+  try {
+    let basePattern = appState.matchPattern;
+    // 移除末尾的通配符
+    if (basePattern.endsWith('*')) {
+      basePattern = basePattern.slice(0, -1);
+    }
+    if (basePattern.endsWith('/')) {
+      basePattern = basePattern.slice(0, -1);
+    }
+    
+    // 提取域名
+    const patternUrl = new URL(basePattern);
+    domain = patternUrl.hostname;
+    console.log(`从匹配模式中提取域名: ${domain}`);
+  } catch (e) {
+    console.error("提取域名失败:", e);
+    // 如果提取失败，使用原始匹配模式
+    domain = appState.matchPattern.replace(/^https?:\/\//, '').split('/')[0];
+  }
+
   // 构建所有需要重定向的文件映射
   const scriptMappings: Record<string, string> = {}
 
@@ -132,7 +154,9 @@ function updateRedirectRules() {
         }
       },
       condition: {
+        // 添加域名限制，确保只匹配指定域名
         urlFilter: from,
+        domains: domain ? [domain] : [],
         resourceTypes: [resourceType]
       }
     }
@@ -514,8 +538,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 处理获取资源请求
   if (message.action === "getResource") {
-    const fileName = message.fileName
-    const fileKey = `asset_${fileName}`
+    const fileName = message.fileName;
+    const fileKey = `asset_${fileName}`;
+    
+    // 检查请求的URL是否匹配设置的模式
+    if (message.url && !urlMatchesPattern(message.url, appState.matchPattern)) {
+      console.log(`URL不匹配: ${message.url} 不匹配 ${appState.matchPattern}`);
+      sendResponse({ exists: false, error: "URL不匹配配置的模式" });
+      return true;
+    }
 
     chrome.storage.local.get([fileKey], (result) => {
       if (result[fileKey]) {
@@ -724,6 +755,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     return true // 表示将异步发送响应
   }
+
+  if (message.action === "checkUrlAndEnabledState") {
+    const currentUrl = message.currentUrl;
+    // Only inject if extension is enabled AND URL matches the pattern
+    const shouldInject = appState.enabled && urlMatchesPattern(currentUrl, appState.matchPattern);
+    
+    console.log(`URL check: ${currentUrl}, Pattern: ${appState.matchPattern}, Enabled: ${appState.enabled}, Should inject: ${shouldInject}`);
+    
+    sendResponse({
+      shouldInject: shouldInject,
+      matchPattern: appState.matchPattern,
+      enabled: appState.enabled
+    });
+    return true;
+  }
 })
 
 // 处理文件请求
@@ -753,4 +799,36 @@ function decompressData(compressedBase64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i)
   }
   return bytes
+}
+
+// 判断URL是否匹配指定的模式
+function urlMatchesPattern(url: string, pattern: string): boolean {
+  try {
+    // 解析URL和模式为URL对象
+    const urlObj = new URL(url);
+    
+    // 移除模式末尾的通配符，获取基本URL部分
+    let basePattern = pattern;
+    if (basePattern.endsWith('*')) {
+      basePattern = basePattern.slice(0, -1);
+    }
+    
+    if (basePattern.endsWith('/')) {
+      basePattern = basePattern.slice(0, -1);
+    }
+    
+    // 检查URL是否以模式开头
+    const urlString = `${urlObj.protocol}//${urlObj.hostname}${urlObj.port ? ':' + urlObj.port : ''}`;
+    
+    // 标准化URL和模式（去掉协议开头的多余部分）
+    const normalizedUrl = urlString.replace(/^https?:\/\//, '');
+    const normalizedPattern = basePattern.replace(/^https?:\/\//, '');
+    
+    console.log(`比较URL: ${normalizedUrl} 与模式: ${normalizedPattern}`);
+    
+    return normalizedUrl.startsWith(normalizedPattern);
+  } catch (e) {
+    console.error("URL匹配错误:", e);
+    return false;
+  }
 }
