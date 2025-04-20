@@ -1,677 +1,319 @@
-import JSZip from "jszip"
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 
-import "./style.css"
+import { Button } from "~components/ui/button"
+import { Switch } from "~components/ui/switch"
+import { toggleAppEnabled } from "~services/storage"
+import type { ReplacementInfo } from "~types"
 
-// 进度信息类型
-interface ProgressInfo {
-  step: string
-  percent: number
-  details?: string
+import "~style.css"
+
+interface AppStatus {
+  id: string
+  name: string
+  enabled: boolean
 }
 
-// 活动规则类型
-interface ActiveRules {
-  js?: string
-  css?: string
-  worker?: string
-  other?: string[]
+interface PageResource {
+  type: "script" | "style"
+  url: string
 }
 
-const baseUrl = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
+const Popup: React.FC = () => {
+  const [currentUrl, setCurrentUrl] = useState<string>("")
+  const [replacements, setReplacements] = useState<ReplacementInfo[]>([])
+  const [activeApps, setActiveApps] = useState<AppStatus[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
+  const [pageResources, setPageResources] = useState<PageResource[]>([])
+  const [showResources, setShowResources] = useState<boolean>(false)
 
-function Popup() {
-  // 状态管理
-  const [file, setFile] = useState<File | null>(null)
-  const [status, setStatus] = useState<{
-    type: "success" | "error" | "info" | "processing" | null
-    message: string
-  }>({
-    type: null,
-    message: ""
-  })
-  const [activeRules, setActiveRules] = useState<ActiveRules>({})
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const [progress, setProgress] = useState<ProgressInfo | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
-  const [isEnabled, setIsEnabled] = useState(false)
-  const [matchPattern, setMatchPattern] = useState<string>(baseUrl)
-  const [isEditingPattern, setIsEditingPattern] = useState(false)
-
-  // 加载当前规则状态
   useEffect(() => {
-    chrome.runtime.sendMessage({ action: "getActiveRules" }, (response) => {
-      if (response && response.rules) {
-        setActiveRules(response.rules)
-        if (response.lastUpdated) {
-          setLastUpdated(response.lastUpdated)
-        }
-        setIsEnabled(response.enabled || false)
-        setMatchPattern(response.matchPattern || baseUrl)
-      }
-    })
+    const init = async () => {
+      setLoading(true)
+      try {
+        // 获取当前标签页信息
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true
+        })
+        if (!tab || !tab.id) return
 
-    // 监听进度更新消息
-    const progressListener = (message: any) => {
-      if (message.action === "progressUpdate" && message.progress) {
-        setProgress(message.progress)
-
-        // 根据进度更新状态
-        if (message.progress.percent === 100) {
-          setStatus({
-            type: "success",
-            message: "处理完成！"
-          })
-        } else if (message.progress.step === "错误") {
-          setStatus({
-            type: "error",
-            message: message.progress.details || "处理出错"
-          })
-        } else {
-          setStatus({
-            type: "processing",
-            message: `处理中 (${message.progress.percent}%)...`
-          })
+        // 获取当前 URL
+        try {
+          chrome.tabs.sendMessage(
+            tab.id,
+            { type: "GET_PAGE_URL" },
+            (response) => {
+              if (response && response.url) {
+                setCurrentUrl(response.url)
+              }
+            }
+          )
+        } catch (error) {
+          console.error("无法获取页面 URL:", error)
         }
+
+        // 获取当前标签页的替换信息
+        chrome.runtime.sendMessage(
+          { type: "GET_REPLACEMENTS", tabId: tab.id },
+          (response) => {
+            if (response && response.replacements) {
+              setReplacements(response.replacements)
+
+              // 提取唯一的应用
+              const apps: AppStatus[] = []
+              const appIds = new Set<string>()
+
+              response.replacements.forEach((replacement: ReplacementInfo) => {
+                if (!appIds.has(replacement.appId)) {
+                  appIds.add(replacement.appId)
+                  apps.push({
+                    id: replacement.appId,
+                    name: replacement.appName,
+                    enabled: true // 如果看到替换，则应用已启用
+                  })
+                }
+              })
+
+              setActiveApps(apps)
+            }
+          }
+        )
+      } catch (error) {
+        console.error("初始化 popup 时出错:", error)
+      } finally {
+        setLoading(false)
       }
     }
 
-    chrome.runtime.onMessage.addListener(progressListener)
+    init()
+
+    // 监听替换更新消息
+    const handleMessage = (message: any) => {
+      if (message.type === "REPLACEMENT_UPDATED") {
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+          if (tab && tab.id === message.tabId) {
+            setReplacements(message.replacements)
+
+            // 更新应用状态
+            const apps: AppStatus[] = []
+            const appIds = new Set<string>()
+
+            message.replacements.forEach((replacement: ReplacementInfo) => {
+              if (!appIds.has(replacement.appId)) {
+                appIds.add(replacement.appId)
+                apps.push({
+                  id: replacement.appId,
+                  name: replacement.appName,
+                  enabled: true
+                })
+              }
+            })
+
+            setActiveApps(apps)
+          }
+        })
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleMessage)
 
     return () => {
-      chrome.runtime.onMessage.removeListener(progressListener)
+      chrome.runtime.onMessage.removeListener(handleMessage)
     }
   }, [])
 
-  // 处理文件选择
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const selectedFile = e.target.files[0]
-      if (selectedFile.name.endsWith(".zip")) {
-        setFile(selectedFile)
-        setStatus({ type: "info", message: "文件已选择，点击上传按钮进行处理" })
-      } else {
-        setStatus({ type: "error", message: "请选择.zip格式的文件" })
-        setFile(null)
-      }
-    }
-  }
-
-  // 处理拖放事件
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setIsDragging(true)
-    } else if (e.type === "dragleave") {
-      setIsDragging(false)
-    }
-  }
-
-  // 处理拖放释放
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0]
-      if (droppedFile.name.endsWith(".zip")) {
-        setFile(droppedFile)
-        setStatus({ type: "info", message: "文件已选择，点击处理按钮进行应用" })
-      } else {
-        setStatus({ type: "error", message: "请选择.zip格式的文件" })
-      }
-    }
-  }
-
-  // 处理文件上传和解压
-  const handleUpload = async () => {
-    if (!file) {
-      setStatus({ type: "error", message: "请先选择一个压缩包" })
-      return
-    }
-
-    // 如果替换功能被禁用，添加提示
-    if (!isEnabled) {
-      setStatus({
-        type: "info",
-        message: "注意：脚本替换功能当前已禁用。文件将被处理但不会被应用，请手动启用替换功能。"
-      })
-      // 等待2秒让用户看到消息
-      await new Promise(resolve => setTimeout(resolve, 2000))
-    }
-
-    setStatus({ type: "processing", message: "正在处理文件..." })
-    setProgress({ step: "准备", percent: 0, details: "准备处理文件..." })
-
+  /**
+   * 切换应用启用状态并重新加载当前标签页
+   * @param appId - 需要切换状态的应用ID
+   * @throws 当切换应用状态失败时可能抛出错误
+   * @description
+   * 1. 调用 toggleAppEnabled 更新应用状态
+   * 2. 更新本地应用列表状态
+   * 3. 重新加载当前活动标签页以应用更改
+   */
+  const handleToggleApp = async (appId: string) => {
     try {
-      // 读取并解压zip文件
-      const zipData = await file.arrayBuffer()
-      const zip = await JSZip.loadAsync(zipData)
+      const updatedApp = await toggleAppEnabled(appId)
 
-      // 查找并读取apaas.json文件
-      const apaasJsonFile = zip.file("apaas.json")
-      if (!apaasJsonFile) {
-        setStatus({ type: "error", message: "压缩包中缺少apaas.json文件" })
-        return
-      }
+      if (updatedApp) {
+        setActiveApps((prev) =>
+          prev.map((app) =>
+            app.id === appId ? { ...app, enabled: updatedApp.enabled } : app
+          )
+        )
 
-      // 解析json文件
-      const jsonContent = await apaasJsonFile.async("text")
-      const config = JSON.parse(jsonContent)
-
-      if (!config.outputName) {
-        setStatus({ type: "error", message: "apaas.json中缺少outputName字段" })
-        return
-      }
-
-      const outputName = config.outputName
-
-      // 检查必要文件
-      const jsFileName = `${outputName}.umd.js`
-      const cssFileName = `${outputName}.css`
-      const workerFileName = `${outputName}.umd.worker.js`
-
-      const jsFile = zip.file(jsFileName)
-      if (!jsFile) {
-        setStatus({
-          type: "error",
-          message: `压缩包中缺少主JS文件: ${jsFileName}`
+        // Reload the page to apply changes
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true
         })
-        return
-      }
-
-      // 准备要保存的文件
-      const filesToSave: { [key: string]: ArrayBuffer } = {}
-
-      // 保存主JS文件
-      filesToSave[jsFileName] = await jsFile.async("arraybuffer")
-
-      // 如果有CSS文件，也保存
-      const cssFile = zip.file(cssFileName)
-      if (cssFile) {
-        filesToSave[cssFileName] = await cssFile.async("arraybuffer")
-      }
-
-      // 如果有Worker文件，也保存
-      const workerFile = zip.file(workerFileName)
-      if (workerFile) {
-        filesToSave[workerFileName] = await workerFile.async("arraybuffer")
-      }
-
-      // 保存static和public目录下的所有文件
-      const otherFiles: string[] = []
-      zip.forEach((relativePath, zipEntry) => {
-        if (
-          !zipEntry.dir &&
-          (relativePath.startsWith("static/") ||
-            relativePath.startsWith("public/"))
-        ) {
-          otherFiles.push(relativePath)
+        if (tab && tab.id) {
+          chrome.tabs.reload(tab.id)
         }
-      })
-
-      // 发送到后台进行处理
-      chrome.runtime.sendMessage(
-        {
-          action: "processFiles",
-          outputName: outputName,
-          filesToSave: filesToSave,
-          otherFiles: otherFiles,
-          zipData: Array.from(new Uint8Array(zipData))
-        },
-        (response) => {
-          if (response && response.success) {
-            // 成功后的处理已经通过进度消息更新
-            setActiveRules(response.rules)
-          } else if (response) {
-            setStatus({ type: "error", message: `处理失败: ${response.error}` })
-          }
-        }
-      )
+      }
     } catch (error) {
-      console.error("处理文件时出错:", error)
-      setStatus({ type: "error", message: `处理文件时出错: ${error.message}` })
+      console.error("Error toggling app:", error)
     }
   }
 
-  // 格式化日期
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp)
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`
+  const openOptions = () => {
+    chrome.runtime.openOptionsPage()
   }
 
-  // 进度指示器组件
-  const ProgressIndicator = ({ progress }: { progress: ProgressInfo }) => (
-    <div className="tw-mt-4">
-      <div className="tw-flex tw-justify-between tw-mb-1">
-        <span className="tw-text-sm tw-font-medium tw-text-gray-700">
-          {progress.step}
-        </span>
-        <span className="tw-text-sm tw-font-medium tw-text-gray-700">
-          {progress.percent}%
-        </span>
-      </div>
-      <div className="tw-w-full tw-bg-gray-200 tw-rounded-full tw-h-2.5">
-        <div
-          className="tw-bg-primary-500 tw-h-2.5 tw-rounded-full tw-transition-all tw-duration-300"
-          style={{ width: `${progress.percent}%` }}></div>
-      </div>
-      {progress.details && (
-        <p className="tw-mt-1 tw-text-sm tw-text-gray-600">
-          {progress.details}
-        </p>
-      )}
-    </div>
-  )
-
-  // 处理开关切换
-  const handleToggleEnabled = () => {
-    const newEnabledState = !isEnabled
-    setIsEnabled(newEnabledState)
-
-    // 发送消息到后台更新状态
-    chrome.runtime.sendMessage({
-      action: "toggleEnabled",
-      enabled: newEnabledState
+  const openDevTools = () => {
+    // 打开扩展后台页面的开发者工具
+    chrome.tabs.create({ url: "chrome://extensions" }, () => {
+      chrome.runtime.sendMessage({ type: "OPEN_DEV_TOOLS" })
     })
   }
 
-  // 处理匹配模式变化
-  const handleMatchPatternChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMatchPattern(e.target.value)
-  }
+  const checkPageResources = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (tabs[0] && tabs[0].id) {
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tabs[0].id },
+            func: () => {
+              const resources: { type: "script" | "style"; url: string }[] = []
 
-  // 处理匹配模式保存
-  const handleMatchPatternSave = () => {
-    let pattern = matchPattern.trim()
+              // 获取所有脚本
+              document.querySelectorAll("script[src]").forEach((script) => {
+                const src = script.getAttribute("src")
+                if (src) resources.push({ type: "script", url: src })
+              })
 
-    // 确保匹配模式有效并且末尾有通配符
-    if (!pattern) {
-      pattern = "http://gscrm-ycdl-fw-jsfw.yctp.yuchaiqas.com/*"
-    } else if (!pattern.endsWith("*")) {
-      // 如果不是以通配符结尾，确保有合适的结尾
-      if (!pattern.endsWith("/")) {
-        pattern += "/"
+              // 获取所有样式表
+              document
+                .querySelectorAll('link[rel="stylesheet"]')
+                .forEach((link) => {
+                  const href = link.getAttribute("href")
+                  if (href) resources.push({ type: "style", url: href })
+                })
+
+              return resources
+            }
+          },
+          (results) => {
+            if (results && results[0] && results[0].result) {
+              setPageResources(results[0].result)
+              setShowResources(true)
+            }
+          }
+        )
       }
-      pattern += "*"
-    }
-
-    // 发送消息到后台更新匹配模式
-    chrome.runtime.sendMessage(
-      {
-        action: "updateMatchPattern",
-        pattern: pattern
-      },
-      (response) => {
-        if (response && response.success) {
-          setMatchPattern(response.matchPattern)
-          setIsEditingPattern(false)
-          setStatus({
-            type: "success",
-            message: "URL匹配模式已更新"
-          })
-
-          // 2秒后清除状态消息
-          setTimeout(() => {
-            setStatus({
-              type: null,
-              message: ""
-            })
-          }, 2000)
-        }
-      }
-    )
+    })
   }
 
   return (
-    <div className="tw-w-[450px] tw-p-6 tw-font-sans tw-bg-gray-50">
-      <h1 className="tw-text-xl tw-font-bold tw-text-gray-800 tw-mb-4">
-        APaaS 脚本替换工具
-      </h1>
+    <div className="tw-p-4 tw-min-w-[350px]">
+      <h1 className="tw-text-xl tw-font-bold tw-mb-4">APaaS 脚本替换工具</h1>
 
-      {/* 添加启用/禁用开关 */}
-      <div className="tw-flex tw-items-center tw-justify-between tw-px-2 tw-py-3 tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
-        <span className="tw-text-sm tw-font-medium tw-text-gray-700">
-          启用脚本替换
-        </span>
-        <button
-          className={`tw-relative tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors ${isEnabled ? "tw-bg-primary-500" : "tw-bg-gray-300"}`}
-          onClick={handleToggleEnabled}>
-          <span className="tw-sr-only">启用脚本替换</span>
-          <span
-            className={`tw-inline-block tw-h-4 tw-w-4 tw-transform tw-rounded-full tw-bg-white tw-transition-transform ${isEnabled ? "tw-translate-x-6" : "tw-translate-x-1"}`}
-          />
-        </button>
-      </div>
-
-      {/* 添加URL匹配模式设置 */}
-      <div className="tw-mb-4 tw-bg-white tw-rounded-md tw-shadow-sm">
-        <div className="tw-px-2 tw-py-3 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-justify-between">
-          <span className="tw-text-sm tw-font-medium tw-text-gray-700">
-            URL匹配模式
-          </span>
-          <button
-            className="tw-text-xs tw-text-primary-500 tw-hover:text-primary-700"
-            onClick={() => setIsEditingPattern(!isEditingPattern)}>
-            {isEditingPattern ? "取消" : "编辑"}
-          </button>
+      {loading ? (
+        <div className="tw-flex tw-justify-center tw-my-4">
+          <div className="tw-animate-spin tw-rounded-full tw-h-6 tw-w-6 tw-border-b-2 tw-border-primary"></div>
         </div>
-        <div className="tw-px-2 tw-py-3">
-          {isEditingPattern ? (
-            <div className="tw-flex tw-flex-col tw-space-y-2">
-              <input
-                type="text"
-                value={matchPattern}
-                onChange={handleMatchPatternChange}
-                className="tw-w-full tw-px-2 tw-py-1 tw-border tw-border-gray-300 tw-rounded-md tw-text-sm"
-                placeholder="输入URL匹配模式，例如：http://example.com/*"
-              />
-              <div className="tw-flex tw-justify-end">
-                <button
-                  className="tw-text-xs tw-px-2 tw-py-1 tw-bg-primary-500 tw-text-white tw-rounded-md tw-hover:bg-primary-600"
-                  onClick={handleMatchPatternSave}>
-                  保存
-                </button>
+      ) : (
+        <>
+          {/* 应用信息与开关区域 */}
+          {/* {activeApps.length > 0 ? ( */}
+          <div className="tw-mb-4">
+            <h2 className="tw-text-md tw-font-medium tw-mb-2">当前页面应用</h2>
+            <div className="tw-space-y-2">
+              {activeApps.map((app) => (
+                <div
+                  key={app.id}
+                  className="tw-flex tw-items-center tw-justify-between tw-p-2 tw-bg-gray-100 dark:tw-bg-gray-800 tw-rounded">
+                  <span>{app.name}</span>
+                  <Switch
+                    checked={app.enabled}
+                    onCheckedChange={() => handleToggleApp(app.id)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* ) : (
+            <p className="tw-text-sm tw-text-gray-500 tw-mb-4">
+              当前页面没有匹配的应用
+            </p>
+          )} */}
+
+          {/* 替换资源列表 */}
+          {replacements.length > 0 ? (
+            <div>
+              <h2 className="tw-text-md tw-font-medium tw-mb-2">
+                已替换资源 ({replacements.length})
+              </h2>
+              <div className="tw-max-h-60 tw-overflow-y-auto tw-space-y-2">
+                {replacements.map((replacement, index) => (
+                  <div
+                    key={index}
+                    className="tw-p-2 tw-bg-gray-100 dark:tw-bg-gray-800 tw-rounded tw-text-xs">
+                    <div className="tw-truncate">
+                      <span className="tw-font-medium">原始:</span>{" "}
+                      {replacement.originalUrl}
+                    </div>
+                    <div className="tw-truncate">
+                      <span className="tw-font-medium">替换:</span>{" "}
+                      {replacement.replacedUrl}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="tw-text-xs tw-text-gray-500">
-                输入要匹配的URL模式，使用 *
-                作为通配符。例如：http://example.com/*
-                将匹配该域名下的所有页面。
-              </p>
             </div>
           ) : (
-            <div className="tw-text-sm tw-break-all tw-text-gray-800">
-              {matchPattern}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 当脚本替换禁用时显示提示 */}
-      {!isEnabled && Object.keys(activeRules).length > 0 && (
-        <div className="tw-mb-4 tw-p-3 tw-rounded-md tw-bg-yellow-50 tw-text-yellow-800 tw-border tw-border-yellow-200">
-          <div className="tw-flex">
-            <svg
-              className="tw-h-5 tw-w-5 tw-text-yellow-500 tw-mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-            </svg>
-            <span>脚本替换功能已禁用，启用后才会替换文件</span>
-          </div>
-        </div>
-      )}
-
-      {/* 文件上传区域 */}
-      <div
-        className={`tw-border-2 ${isDragging ? "tw-border-primary-500 tw-bg-primary-50" : "tw-border-dashed tw-border-gray-300"} 
-                   tw-rounded-lg tw-p-6 tw-text-center tw-cursor-pointer tw-transition-all tw-hover:bg-gray-50`}
-        onClick={() => document.getElementById("fileInput")?.click()}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}>
-        <div className="tw-flex tw-flex-col tw-items-center tw-justify-center tw-space-y-2">
-          <svg
-            className="tw-w-12 tw-h-12 tw-text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-          </svg>
-          <p className="tw-text-sm tw-text-gray-600">
-            {file ? "选择其他文件" : "点击或拖放 APaaS ZIP 压缩包"}
-          </p>
-        </div>
-        <input
-          id="fileInput"
-          type="file"
-          accept=".zip"
-          onChange={handleFileSelect}
-          className="tw-hidden"
-        />
-        {file && (
-          <div className="tw-mt-3 tw-p-3 tw-bg-white tw-rounded-md tw-shadow-sm">
-            <div className="tw-flex tw-items-center">
-              <svg
-                className="tw-w-6 tw-h-6 tw-text-primary-500 tw-mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-              </svg>
-              <div className="tw-flex-1 tw-truncate">
-                <span className="tw-font-medium">{file.name}</span>
-                <span className="tw-ml-2 tw-text-sm tw-text-gray-500">
-                  ({(file.size / 1024).toFixed(1)} KB)
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 处理按钮 */}
-      <button
-        className={`tw-mt-4 tw-w-full btn ${status.type === "processing" ? "tw-bg-gray-400 tw-cursor-not-allowed" : "btn-primary"}`}
-        onClick={handleUpload}
-        disabled={!file || status.type === "processing"}>
-        {status.type === "processing" ? (
-          <div className="tw-flex tw-items-center tw-justify-center">
-            <svg
-              className="tw-animate-spin tw--ml-1 tw-mr-3 tw-h-5 tw-w-5 tw-text-white"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24">
-              <circle
-                className="tw-opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"></circle>
-              <path
-                className="tw-opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            处理中...
-          </div>
-        ) : (
-          "处理并应用"
-        )}
-      </button>
-
-      {/* 状态信息 */}
-      {status.type && (
-        <div
-          className={`tw-mt-4 tw-p-3 tw-rounded-md ${
-            status.type === "success"
-              ? "tw-bg-success-50 tw-text-success-800 tw-border tw-border-success-200"
-              : status.type === "error"
-                ? "tw-bg-error-50 tw-text-error-800 tw-border tw-border-error-200"
-                : status.type === "info"
-                  ? "tw-bg-blue-50 tw-text-blue-800 tw-border tw-border-blue-200"
-                  : "tw-bg-gray-50 tw-text-gray-800 tw-border tw-border-gray-200"
-          }`}>
-          <div className="tw-flex">
-            {status.type === "success" && (
-              <svg
-                className="tw-h-5 tw-w-5 tw-text-success-500 tw-mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 13l4 4L19 7"></path>
-              </svg>
-            )}
-            {status.type === "error" && (
-              <svg
-                className="tw-h-5 tw-w-5 tw-text-error-500 tw-mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            )}
-            {status.type === "info" && (
-              <svg
-                className="tw-h-5 tw-w-5 tw-text-blue-500 tw-mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            )}
-            {status.type === "processing" && !progress && (
-              <svg
-                className="tw-animate-spin tw-h-5 tw-w-5 tw-text-gray-500 tw-mr-2"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24">
-                <circle
-                  className="tw-opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"></circle>
-                <path
-                  className="tw-opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            )}
-            <span>{status.message}</span>
-          </div>
-        </div>
-      )}
-
-      {/* 进度指示器 */}
-      {progress && (status.type === "processing" || progress.percent < 100) && (
-        <ProgressIndicator progress={progress} />
-      )}
-
-      {/* 当前活动规则 */}
-      {Object.keys(activeRules).length > 0 && (
-        <div className="tw-mt-6 tw-bg-white tw-p-4 tw-rounded-md tw-shadow-sm">
-          <h2 className="tw-text-sm tw-font-semibold tw-text-gray-700 tw-mb-2 tw-flex tw-items-center tw-justify-between">
-            <div className="tw-flex tw-items-center">
-              <svg
-                className="tw-w-4 tw-h-4 tw-mr-1 tw-text-primary-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-              </svg>
-              当前活动规则
-            </div>
-            <span
-              className={`tw-text-xs tw-px-2 tw-py-1 tw-rounded ${isEnabled ? "tw-bg-success-100 tw-text-success-800" : "tw-bg-gray-100 tw-text-gray-600"}`}>
-              {isEnabled ? "已启用" : "已禁用"}
-            </span>
-          </h2>
-          {lastUpdated && (
-            <p className="tw-text-xs tw-text-gray-500 tw-mb-2">
-              上次更新: {formatDate(lastUpdated)}
+            <p className="tw-text-sm tw-text-gray-500 tw-mb-4">
+              当前页面没有替换的资源
             </p>
           )}
-          <div className="tw-space-y-2">
-            {activeRules.js && (
-              <div className="tw-flex tw-items-start tw-justify-between">
-                <span className="tw-text-xs tw-text-gray-800 tw-break-all">
-                  {activeRules.js}
-                </span>
-                <span className="tw-inline-block tw-w-14 tw-text-xs tw-font-medium tw-text-gray-600 tw-text-right">
-                  js
-                </span>
-              </div>
-            )}
-            {activeRules.css && (
-              <div className="tw-flex tw-items-start tw-justify-between">
-                <span className="tw-text-xs tw-text-gray-800 tw-break-all">
-                  {activeRules.css}
-                </span>
-                <span className="tw-inline-block tw-w-14 tw-text-xs tw-font-medium tw-text-gray-600 tw-text-right">
-                  css
-                </span>
-              </div>
-            )}
-            {activeRules.worker && (
-              <div className="tw-flex tw-items-start tw-justify-between">
-                <span className="tw-text-xs tw-text-gray-800 tw-break-all">
-                  {activeRules.worker}
-                </span>
-                <span className="tw-inline-block tw-w-14 tw-text-xs tw-font-medium tw-text-gray-600 tw-text-right">
-                  worker.js
-                </span>
-              </div>
-            )}
-            {activeRules.other && activeRules.other.length > 0 && (
-              <div className="tw-flex tw-items-start">
-                <span className="tw-text-xs tw-text-gray-800 tw-justify-between">
-                  {activeRules.other.length} 个文件
-                </span>
-                <span className="tw-inline-block tw-w-14 tw-text-xs tw-font-medium tw-text-gray-600 tw-text-right">
-                  其他:
-                </span>
+
+          {/* 显示页面资源的区域 */}
+          <div className="tw-mt-4">
+            <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+              <button
+                className="tw-text-sm tw-text-blue-600 hover:tw-underline"
+                onClick={() => setShowResources(!showResources)}>
+                {showResources ? "隐藏页面资源" : "显示页面资源"}
+              </button>
+              <Button variant="outline" size="sm" onClick={checkPageResources}>
+                检查资源
+              </Button>
+            </div>
+
+            {showResources && pageResources.length > 0 && (
+              <div className="tw-mt-2">
+                <h3 className="tw-text-sm tw-font-medium tw-mb-1">
+                  页面资源 ({pageResources.length})
+                </h3>
+                <div className="tw-max-h-60 tw-overflow-y-auto tw-border tw-rounded tw-p-2 tw-text-xs">
+                  {pageResources.map((resource, index) => (
+                    <div
+                      key={index}
+                      className="tw-mb-1 tw-py-1 tw-border-b last:tw-border-b-0">
+                      <div className="tw-flex">
+                        <span className="tw-font-bold tw-mr-1">
+                          {resource.type === "script" ? "📜 JS:" : "🎨 CSS:"}
+                        </span>
+                        <span className="tw-truncate">{resource.url}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
 
-      {/* 底部信息 */}
-      <div className="tw-mt-6 tw-text-center">
-        <p className="tw-text-xs tw-text-gray-500">
-          APaaS 脚本替换工具 v0.0.2 |{/* TODO：获取自己企业微信 userId */}
-          <a
-            href="wxwork://message?username=yc90112885"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="tw-text-primary-500 tw-hover:text-primary-700 tw-ml-1">
-            帮助
-          </a>
-        </p>
-      </div>
+          {/* 操作按钮 */}
+          <div className="tw-flex tw-justify-between tw-mt-4">
+            <Button variant="outline" size="sm" onClick={openOptions}>
+              配置
+            </Button>
+            <Button variant="outline" size="sm" onClick={openDevTools}>
+              开发者工具
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
