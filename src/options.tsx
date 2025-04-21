@@ -28,9 +28,29 @@ import { Logo } from "~components/logo"
 const PackageItem: React.FC<{
   pkg: Package
   onDelete: (id: string) => void
-}> = ({ pkg, onDelete }) => {
+  onEdit: (id: string) => void
+  isEditing?: boolean
+}> = ({ pkg, onDelete, onEdit, isEditing = false }) => {
+  // 阻止事件冒泡的处理函数
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation() // 防止事件冒泡
+    e.preventDefault()
+    onEdit(pkg.id)
+  }
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation() // 防止事件冒泡
+    e.preventDefault()
+    onDelete(pkg.id)
+  }
+
   return (
-    <div className="tw-flex tw-items-center tw-justify-between tw-p-3 tw-mb-2 tw-bg-gray-100 dark:tw-bg-gray-800 tw-rounded">
+    <div
+      className={`tw-flex tw-items-center tw-justify-between tw-p-3 tw-mb-2 tw-rounded ${
+        isEditing
+          ? "tw-bg-yellow-50 tw-border-2 tw-border-yellow-500 dark:tw-bg-yellow-950/30"
+          : "tw-bg-gray-100 dark:tw-bg-gray-800"
+      }`}>
       <div>
         <div className="tw-font-medium">{pkg.name}</div>
         <div className="tw-text-xs tw-text-gray-500">
@@ -39,10 +59,31 @@ const PackageItem: React.FC<{
         <div className="tw-text-xs tw-text-gray-500">
           上传时间: {new Date(pkg.uploadedAt).toLocaleString()}
         </div>
+        {isEditing && (
+          <div className="tw-text-xs tw-text-yellow-600 dark:tw-text-yellow-400 tw-mt-1">
+            <strong>编辑中</strong> - 请上传新文件进行替换
+          </div>
+        )}
       </div>
-      <Button variant="destructive" size="sm" onClick={() => onDelete(pkg.id)}>
-        删除
-      </Button>
+      <div className="tw-flex tw-space-x-2">
+        <Button
+          variant={isEditing ? "default" : "outline"}
+          size="sm"
+          onClick={handleEdit}
+          disabled={isEditing}
+          className={
+            isEditing
+              ? "tw-bg-yellow-500 tw-text-white hover:tw-bg-yellow-600"
+              : ""
+          }>
+          <EditIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+          {isEditing ? "编辑中" : "编辑"}
+        </Button>
+        <Button variant="destructive" size="sm" onClick={handleDelete}>
+          <TrashIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+          删除
+        </Button>
+      </div>
     </div>
   )
 }
@@ -60,6 +101,8 @@ const ApplicationForm: React.FC<{
   const [enabled, setEnabled] = useState(app?.enabled !== false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
@@ -68,13 +111,43 @@ const ApplicationForm: React.FC<{
     onDrop: async (acceptedFiles) => {
       setError(null)
       setSuccess(null)
+      setIsUploading(true)
 
       try {
         for (const file of acceptedFiles) {
+          // 显示正在处理的文件名
+          setSuccess(`正在处理文件：${file.name}...`)
+
           const pkg = await processZipFile(file)
           if (pkg) {
-            setPackages((prev) => [...prev, pkg])
-            setSuccess(`文件 ${file.name} 上传成功`)
+            // 检查是否正在编辑已有包
+            if (editingPackageId) {
+              // 替换现有包
+              setPackages((prev) =>
+                prev.map((p) =>
+                  p.id === editingPackageId
+                    ? { ...pkg, id: editingPackageId }
+                    : p
+                )
+              )
+              setSuccess(`文件 ${file.name} 已成功替换`)
+              setEditingPackageId(null) // 重置编辑状态
+            } else {
+              // 检查是否存在同名的包
+              const hasDuplicateOutputName = packages.some(
+                (p) => p.config.outputName === pkg.config.outputName
+              )
+
+              if (hasDuplicateOutputName) {
+                setError(
+                  `已存在输出名称为 ${pkg.config.outputName} 的包。如需覆盖，请点击对应包的"编辑"按钮。`
+                )
+              } else {
+                // 添加新包
+                setPackages((prev) => [...prev, pkg])
+                setSuccess(`文件 ${file.name} 上传成功`)
+              }
+            }
           } else {
             setError(
               `无法处理文件 ${file.name}，请确保包含 apaas.json 文件且格式正确`
@@ -85,22 +158,79 @@ const ApplicationForm: React.FC<{
         setError(
           `上传文件时出错: ${err instanceof Error ? err.message : String(err)}`
         )
+      } finally {
+        setIsUploading(false)
       }
-    }
+    },
+    disabled: isUploading // 上传过程中禁用拖放功能
   })
 
   const handleDeletePackage = (id: string) => {
-    setPackages((prev) => {
-      const pkgToDelete = prev.find((p) => p.id === id)
-      if (pkgToDelete) {
-        // revokePackageUrls(pkgToDelete)
+    setPackages((prev) => prev.filter((pkg) => pkg.id !== id))
+    // 如果正在编辑的包被删除，重置编辑状态
+    if (id === editingPackageId) {
+      setEditingPackageId(null)
+    }
+  }
+
+  const handleEditPackage = (id: string) => {
+    // 如果当前正在编辑，并且点击了相同的包，则取消编辑
+    if (editingPackageId === id) {
+      setEditingPackageId(null)
+      setSuccess(null)
+      return
+    }
+
+    // 如果当前正在编辑其他包，先确认是否切换
+    if (editingPackageId && editingPackageId !== id) {
+      const confirmSwitch = window.confirm(
+        "您正在编辑另一个包，是否切换到编辑当前选择的包？"
+      )
+      if (!confirmSwitch) {
+        return
       }
-      return prev.filter((pkg) => pkg.id !== id)
-    })
+    }
+
+    setEditingPackageId(id)
+
+    // 找到当前编辑的包
+    const pkg = packages.find((p) => p.id === id)
+    if (pkg) {
+      // 设置成功消息，使用更醒目的提示
+      setSuccess(
+        `请上传新的包以替换: "${pkg.name}" (输出名称: ${pkg.config.outputName})`
+      )
+
+      // 自动滚动到上传区域，提高用户体验
+      setTimeout(() => {
+        const uploadArea = document.querySelector(".upload-area")
+        if (uploadArea) {
+          uploadArea.scrollIntoView({ behavior: "smooth", block: "center" })
+        }
+      }, 100)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingPackageId(null)
+    setSuccess(null)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    // 如果正在上传，不允许提交
+    if (isUploading) return
+
+    // 如果用户正在编辑包但未完成，询问是否继续
+    if (editingPackageId) {
+      const confirmContinue = window.confirm(
+        "您正在编辑一个包，但尚未上传新文件替换。是否继续保存应用？"
+      )
+      if (!confirmContinue) {
+        return
+      }
+    }
 
     // Parse URL patterns from textarea
     const patterns = urlPatterns
@@ -117,11 +247,6 @@ const ApplicationForm: React.FC<{
       createdAt: app?.createdAt || Date.now(),
       updatedAt: Date.now()
     }
-    // const { packages: _, ...apps } = newApp
-    // setStores((prev) => ({
-    //   ...prev,
-    //   [newApp.id]: apps
-    // }))
     onSave(newApp)
   }
 
@@ -136,10 +261,22 @@ const ApplicationForm: React.FC<{
       )}
 
       {success && (
-        <Alert variant="success" className="tw-mb-4">
-          <CheckCircleIcon className="tw-h-4 tw-w-4" />
-          <AlertTitle>成功</AlertTitle>
-          <AlertDescription>{success}</AlertDescription>
+        <Alert
+          variant={isUploading ? "default" : "success"}
+          className="tw-mb-4">
+          {isUploading ? (
+            <div className="tw-flex tw-items-center">
+              <div className="tw-animate-spin tw-rounded-full tw-h-4 tw-w-4 tw-border-b-2 tw-border-primary tw-mr-2"></div>
+              <AlertTitle>处理中</AlertTitle>
+              <AlertDescription>{success}</AlertDescription>
+            </div>
+          ) : (
+            <>
+              <CheckCircleIcon className="tw-h-4 tw-w-4" />
+              <AlertTitle>成功</AlertTitle>
+              <AlertDescription>{success}</AlertDescription>
+            </>
+          )}
         </Alert>
       )}
 
@@ -153,6 +290,7 @@ const ApplicationForm: React.FC<{
           onChange={(e) => setName(e.target.value)}
           className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary"
           required
+          disabled={isUploading}
         />
       </div>
 
@@ -166,6 +304,7 @@ const ApplicationForm: React.FC<{
           placeholder="例如: https://*.example.com/*"
           className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary tw-h-24"
           required
+          disabled={isUploading}
         />
         <p className="tw-text-xs tw-text-gray-500 tw-mt-1">
           使用 * 作为通配符，每行一个规则。例如: https://*.example.com/*
@@ -176,25 +315,62 @@ const ApplicationForm: React.FC<{
         <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
           <label className="tw-block tw-text-sm tw-font-medium">
             上传包文件
+            {editingPackageId && (
+              <span className="tw-ml-2 tw-text-primary tw-text-xs">
+                (编辑模式)
+              </span>
+            )}
           </label>
           <div className="tw-flex tw-items-center">
+            {editingPackageId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                className="tw-mr-3"
+                disabled={isUploading}>
+                取消编辑
+              </Button>
+            )}
             <span className="tw-text-sm tw-mr-2">启用应用</span>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
+            <Switch
+              checked={enabled}
+              onCheckedChange={setEnabled}
+              disabled={isUploading}
+            />
           </div>
         </div>
 
         <div
           {...getRootProps()}
-          className={`tw-border-2 tw-border-dashed tw-rounded-md tw-p-6 tw-text-center tw-cursor-pointer ${
+          className={`upload-area tw-border-2 tw-border-dashed tw-rounded-md tw-p-6 tw-text-center ${isUploading ? "tw-opacity-70 tw-cursor-not-allowed" : "tw-cursor-pointer"} ${
             isDragActive
               ? "tw-border-primary tw-bg-primary/10"
-              : "tw-border-gray-300"
+              : editingPackageId
+                ? "tw-border-yellow-500 tw-bg-yellow-50 dark:tw-bg-yellow-950/20"
+                : "tw-border-gray-300"
           }`}>
-          <input {...getInputProps()} />
-          <p>拖放 ZIP 文件到此处，或点击上传</p>
-          <p className="tw-text-xs tw-text-gray-500 tw-mt-1">
-            ZIP 文件必须包含 apaas.json 文件，其中包含 outputName 字段
-          </p>
+          <input {...getInputProps()} disabled={isUploading} />
+
+          {isUploading ? (
+            <div className="tw-flex tw-flex-col tw-items-center tw-justify-center">
+              <div className="tw-animate-spin tw-rounded-full tw-h-8 tw-w-8 tw-border-b-2 tw-border-primary tw-mb-2"></div>
+              <p className="tw-font-medium">正在处理文件，请稍候...</p>
+            </div>
+          ) : editingPackageId ? (
+            <p className="tw-font-medium tw-text-yellow-600 dark:tw-text-yellow-400">
+              拖放新的 ZIP 文件到此处以替换选中的包
+            </p>
+          ) : (
+            <p>拖放 ZIP 文件到此处，或点击上传</p>
+          )}
+
+          {!isUploading && (
+            <p className="tw-text-xs tw-text-gray-500 tw-mt-1">
+              ZIP 文件必须包含 apaas.json 文件，其中包含 outputName 字段
+            </p>
+          )}
         </div>
       </div>
 
@@ -202,6 +378,11 @@ const ApplicationForm: React.FC<{
         <div>
           <h3 className="tw-font-medium tw-mb-2">
             已上传的包 ({packages.length})
+            {editingPackageId && (
+              <span className="tw-ml-2 tw-text-primary tw-text-xs">
+                - 编辑模式
+              </span>
+            )}
           </h3>
           <div className="tw-space-y-2">
             {packages.map((pkg) => (
@@ -209,6 +390,8 @@ const ApplicationForm: React.FC<{
                 key={pkg.id}
                 pkg={pkg}
                 onDelete={handleDeletePackage}
+                onEdit={handleEditPackage}
+                isEditing={pkg.id === editingPackageId}
               />
             ))}
           </div>
@@ -216,10 +399,23 @@ const ApplicationForm: React.FC<{
       )}
 
       <div className="tw-flex tw-justify-end tw-space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isUploading}>
           取消
         </Button>
-        <Button type="submit">保存</Button>
+        <Button type="submit" disabled={isUploading}>
+          {isUploading ? (
+            <>
+              <div className="tw-animate-spin tw-rounded-full tw-h-4 tw-w-4 tw-border-b-2 tw-border-white tw-mr-2"></div>
+              处理中...
+            </>
+          ) : (
+            "保存"
+          )}
+        </Button>
       </div>
     </form>
   )
@@ -272,7 +468,7 @@ const ApplicationItem: React.FC<{
             ))}
           </div>
         </div>
-        <div>
+        <div className="tw-mb-2">
           <span className="tw-font-medium">包数量：</span> {app.packages.length}
         </div>
       </div>
@@ -285,6 +481,7 @@ const Options: React.FC = () => {
   const [editingApp, setEditingApp] = useState<Application | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     const loadApps = async () => {
@@ -302,10 +499,6 @@ const Options: React.FC = () => {
     loadApps()
   }, [])
 
-  // const [_, setStores] = useStorage<{ [appId: string]: AppStore }>(
-  //   APPS_STORE_KEY
-  // )
-
   const handleSaveApp = async (app: Application) => {
     try {
       await saveApp(app)
@@ -318,13 +511,6 @@ const Options: React.FC = () => {
           return [...prev, app]
         }
       })
-
-      // 保存到本地，方便 contents 页使用
-      // const { packages: _, ...apps } = app
-      // setStores((prev) => ({
-      //   ...prev,
-      //   [app.id]: apps
-      // }))
 
       setEditingApp(null)
       setIsCreating(false)
@@ -339,20 +525,6 @@ const Options: React.FC = () => {
     }
 
     try {
-      // Revoke all package URLs before deleting
-      const appToDelete = apps.find((app) => app.id === id)
-      if (appToDelete) {
-        //
-        alert("TODO: Revoke package URLs")
-        // appToDelete.packages.forEach((pkg) => revokePackageUrls(pkg))
-      }
-
-      // 删除本地存储
-      // setStores((prev) => {
-      //   const { [id]: _, ...apps } = prev
-      //   return apps
-      // })
-
       await deleteApp(id)
       setApps((prev) => prev.filter((app) => app.id !== id))
     } catch (error) {
@@ -381,10 +553,36 @@ const Options: React.FC = () => {
         <h1 className="tw-text-2xl tw-font-bold">
           <Logo title="APaaS 脚本替换工具配置" size="large" />
         </h1>
-        {!isCreating && !editingApp && (
-          <Button onClick={() => setIsCreating(true)}>创建新应用</Button>
-        )}
+        <div className="tw-flex tw-space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowHelp(!showHelp)}
+            className="tw-mr-2">
+            <SettingsIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+            {showHelp ? "隐藏帮助" : "显示帮助"}
+          </Button>
+          {!isCreating && !editingApp && (
+            <Button onClick={() => setIsCreating(true)}>创建新应用</Button>
+          )}
+        </div>
       </div>
+
+      {showHelp && (
+        <Alert className="tw-mb-6">
+          <div className="tw-text-sm tw-mb-2">
+            <strong>应用包管理说明：</strong>
+          </div>
+          <ul className="tw-list-disc tw-list-inside tw-text-sm tw-space-y-1">
+            <li>上传包时，系统会自动检查是否存在相同输出名称的包</li>
+            <li>如果发现同名包，系统会阻止上传并显示错误信息</li>
+            <li>要替换已有的包，请点击对应包的"编辑"按钮，然后上传新包</li>
+            <li>替换包时，新包将保留原包的ID，但会更新其内容</li>
+            <li>
+              包的输出名称决定了最终替换的文件名，确保与目标网站的资源名称匹配
+            </li>
+          </ul>
+        </Alert>
+      )}
 
       {loading ? (
         <div className="tw-flex tw-justify-center tw-py-10">

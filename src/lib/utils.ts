@@ -35,16 +35,10 @@ export function base64ToBlob(
   contentType: string = "application/javascript"
 ): string {
   if (!base64Data) throw new Error("Base64数据不能为空")
-  
   try {
     // 判断是否已经是data:URL格式
-    if (base64Data.startsWith('data:')) {
-      // 已经是data:URL格式，直接返回
-      return base64Data;
-    }
-    
+    if (base64Data.startsWith('data:'))  return base64Data;
     // 不是data:URL格式，需要转换
-    // 构建一个完整的data:URL
     return `data:${contentType};base64,${base64Data}`;
   } catch (error) {
     throw new Error(

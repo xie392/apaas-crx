@@ -6,7 +6,6 @@ import type { Application } from "../types"
 
 export const getApps = async (): Promise<Application[]> => {
   try {
-    console.log("正在从存储中获取应用数据...")
     const apps = await get(APPS_STORAGE_KEY)
 
     if (!apps) {
@@ -18,13 +17,6 @@ export const getApps = async (): Promise<Application[]> => {
       console.error("存储中的应用数据格式不正确:", apps)
       return []
     }
-
-    console.log(`成功获取 ${apps.length} 个应用数据`)
-    apps.forEach((app, index) => {
-      console.log(
-        `应用 #${index + 1}: ${app.name}, 启用: ${app.enabled}, URL规则: ${app.urlPatterns.join(", ")}, 包数量: ${app.packages.length}`
-      )
-    })
 
     return apps
   } catch (error) {
