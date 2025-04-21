@@ -54,7 +54,10 @@
       "scripting",
       "tabs",
       "webNavigation",
-      "activeTab"
+      "activeTab",
+      "declarativeNetRequest",
+      "declarativeNetRequestWithHostAccess",
+      "declarativeNetRequestFeedback"
     ],
     "web_accessible_resources": [
       {

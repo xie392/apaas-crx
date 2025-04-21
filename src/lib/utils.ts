@@ -25,38 +25,57 @@ export function urlMatchesPatterns(url: string, patterns: string[]): boolean {
 }
 
 /**
- * 将Base64字符串转换为Blob对象
+ * 将Base64字符串转换为Blob对象，并返回可用于Chrome扩展的数据URL
  * @param base64Data 完整的Base64字符串（可包含data:前缀）
  * @param contentType MIME类型，默认为'application/javascript'
- * @returns 返回Blob对象
+ * @returns 返回数据URL字符串
  */
 export function base64ToBlob(
   base64Data: string,
   contentType: string = "application/javascript"
-): Blob {
+): string {
   if (!base64Data) throw new Error("Base64数据不能为空")
-  // 分离可能的data:前缀
-  const base64WithoutPrefix = base64Data.split(",")[1] || base64Data
-
+  
   try {
-    const byteCharacters = atob(base64WithoutPrefix)
-    const byteArrays: Uint8Array[] = []
-
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-      const slice = byteCharacters.slice(offset, offset + 512)
-      const byteNumbers = new Array(slice.length)
-
-      for (let i = 0; i < slice.length; i++) {
-        byteNumbers[i] = slice.charCodeAt(i)
-      }
-
-      byteArrays.push(new Uint8Array(byteNumbers))
+    // 判断是否已经是data:URL格式
+    if (base64Data.startsWith('data:')) {
+      // 已经是data:URL格式，直接返回
+      return base64Data;
     }
-
-    return new Blob(byteArrays, { type: contentType })
+    
+    // 不是data:URL格式，需要转换
+    // 构建一个完整的data:URL
+    return `data:${contentType};base64,${base64Data}`;
   } catch (error) {
     throw new Error(
       `Base64转换失败: ${error instanceof Error ? error.message : String(error)}`
     )
+  }
+}
+
+/**
+ * 从匹配模式中提取域名
+ * @param pattern URL匹配模式
+ * @returns 提取的域名
+ */
+export function extractDomainFromPattern(pattern: string): string {
+  try {
+    let basePattern = pattern
+    // 移除末尾的通配符
+    if (basePattern.endsWith("*")) {
+      basePattern = basePattern.slice(0, -1)
+    }
+
+    if (basePattern.endsWith("/")) {
+      basePattern = basePattern.slice(0, -1)
+    }
+
+    // 提取域名
+    const patternUrl = new URL(basePattern)
+    return patternUrl.hostname
+  } catch (e) {
+    console.error("提取域名失败:", e)
+    // 如果提取失败，使用原始匹配模式
+    return pattern.replace(/^https?:\/\//, "").split("/")[0]
   }
 }

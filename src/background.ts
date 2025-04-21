@@ -1,81 +1,46 @@
-import { APP_INIT } from "~lib/constants"
-import { urlMatchesPatterns } from "~lib/utils"
-
-import { getApps } from "~services/storage"
-import type { Application } from "~types"
+import { APP_INIT } from "~lib/constants";
+import { base64ToBlob, extractDomainFromPattern, urlMatchesPatterns } from "~lib/utils";
+import { getApps } from "~services/storage";
+import type { Application, Package } from "~types";
 
 // 请求使用scripting API的权限
-chrome.permissions.contains({ permissions: ["scripting"] }, (hasPermission) => {
-  if (!hasPermission) {
-    console.error("扩展缺少scripting权限，无法注入脚本");
-  } else {
-    console.log("扩展已具有scripting权限");
-  }
-});
+// chrome.permissions.contains({ permissions: ["scripting"] }, (hasPermission) => {
+//   if (!hasPermission) {
+//     console.error("扩展缺少scripting权限，无法注入脚本")
+//   } else {
+//     console.log("扩展已具有scripting权限")
+//   }
+// })
 
-// 监听消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 处理APP_INIT请求
+  console.log("Background script received message:", request);
+  
+  // init
   if (request?.action === APP_INIT) {
-    init(sender.url).then(apps => {
-      sendResponse(apps);
-    }).catch(error => {
-      console.error("初始化应用时出错:", error);
-      sendResponse({ isPattern: false, app: null });
-    });
-    return true; // 异步响应
-  }
-
-  // 处理脚本注入请求
-  if (request?.type === "INJECT_SCRIPT") {
-    try {
-      // 获取当前标签页ID
-      const tabId = sender.tab?.id;
-      if (!tabId) {
-        sendResponse({ success: false, error: "无法获取当前标签页" });
-        return true;
-      }
-      
-      console.log(`收到脚本注入请求，tabId: ${tabId}`);
-      
-      // 使用chrome.scripting API注入脚本
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        // 使用函数包装器避免CSP限制
-        func: (scriptContent, originalUrl) => {
+    console.log(`Received APP_INIT request for URL: ${sender.url}`);
+    
+    init(sender.url)
+      .then(apps => {
+        console.log("URL matching result:", apps);
+        if (apps.isPattern && apps.app) {
           try {
-            console.log(`APaaS扩展: 注入脚本 (来自 ${originalUrl})`);
-            // 使用eval执行脚本内容
-            // 这里不受页面CSP限制，因为是扩展API注入的
-            eval(scriptContent);
-            console.log(`APaaS扩展: 脚本执行完成`);
-            return { success: true };
+            updateRedirectRules(apps.app);
+            console.log("Redirect rules updated successfully");
           } catch (error) {
-            console.error("APaaS扩展: 脚本执行出错", error);
-            return { success: false, error: String(error) };
+            console.error("Error updating redirect rules:", error);
           }
-        },
-        args: [request.jsContent, request.originalUrl],
-        // 确保在主世界执行，以便与页面JS环境交互
-        world: "MAIN"
-      }).then(results => {
-        if (results && results[0]) {
-          sendResponse(results[0].result || { success: true });
-        } else {
-          sendResponse({ success: false, error: "脚本注入未返回结果" });
         }
-      }).catch(error => {
-        console.error("执行脚本注入时出错:", error);
-        sendResponse({ success: false, error: String(error) });
+        sendResponse(apps);
+      })
+      .catch(error => {
+        console.error("Error initializing:", error);
+        sendResponse({ isPattern: false, app: null, error: error.message });
       });
-      
-      return true; // 异步响应
-    } catch (error) {
-      console.error("处理脚本注入请求时出错:", error);
-      sendResponse({ success: false, error: String(error) });
-      return true;
-    }
+    
+    return true; // 保持消息通道开放以异步发送响应
   }
+  
+  return false; // 对于其他消息类型，不期待异步响应
 });
 
 /**
@@ -103,4 +68,121 @@ async function init(
     isPattern,
     app: newApp
   }
+}
+
+/**
+ * 更新 Chrome 扩展的重定向规则
+ *
+ * @param app Application 对象，包含应用配置信息
+ * @description
+ * 该函数根据应用配置更新 Chrome 扩展的动态重定向规则：
+ * - 如果应用没有上传包，则直接返回
+ * - 如果功能被禁用，清除所有现有规则
+ * - 根据配置的 URL 模式和包文件创建新的重定向规则
+ * - 支持 JS 和 CSS 文件的重定向
+ * - 规则仅应用于指定域名范围
+ *
+ * @example
+ * updateRedirectRules({
+ *   enabled: true,
+ *   urlPatterns: ['*://example.com/*'],
+ *   packages: [...]
+ * })
+ */
+function updateRedirectRules(app: Application) {
+  // 如果没有上传任何包
+  if (!app.packages.length) return
+
+  // 如果功能被禁用，清除所有规则
+  if (!app.enabled) {
+    chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
+      chrome.declarativeNetRequest.updateDynamicRules(
+        {
+          removeRuleIds: existingRules.map((rule) => rule.id),
+          addRules: []
+        },
+        () => {
+          console.log(`%c已禁用脚本替换功能`, "color: #f00")
+        }
+      )
+    })
+    return
+  }
+
+  // 从匹配模式中提取域名部分，用于更精确的匹配
+  const domains = app.urlPatterns.map(extractDomainFromPattern)
+
+  // 构建所有需要重定向的文件映射
+  const scriptMappings: Record<string, string> = {}
+
+  app.packages.forEach((pkg: Package) => {
+    const jsFileName = pkg.config.outputName + ".umd.js"
+    const cssFileName = pkg.config.outputName + ".css"
+    if (pkg.files[jsFileName]) {
+      const contentType = "application/javascript";
+      scriptMappings[`*${jsFileName}`] = base64ToBlob(pkg.files[jsFileName], contentType);
+    }
+    if (pkg.files[cssFileName]) {
+      const contentType = "text/css";
+      scriptMappings[`*${cssFileName}`] = base64ToBlob(pkg.files[cssFileName], contentType);
+    }
+  })
+
+  // 创建重定向规则
+  const rules: chrome.declarativeNetRequest.Rule[] = Object.entries(
+    scriptMappings
+  ).map(([from, to], index) => {
+    console.log(`Rule ${index + 1}: ${from} => ${to.substring(0, 50)}...`);
+    // 确定资源类型
+    let resourceType = chrome.declarativeNetRequest.ResourceType.SCRIPT;
+    
+    // 基于MIME类型判断资源类型
+    if (to.includes("text/css")) {
+      resourceType = chrome.declarativeNetRequest.ResourceType.STYLESHEET;
+    }
+
+    return {
+      id: index + 1, // 规则ID必须是正整数
+      priority: 1,
+      action: {
+        type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+        redirect: {
+          url: to // 使用data:URL直接重定向
+        }
+      },
+      condition: {
+        // 添加域名限制，确保只匹配指定域名
+        urlFilter: from,
+        domains,
+        resourceTypes: [resourceType]
+      }
+    }
+  });
+
+  // 更新动态规则
+  chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
+    console.log("现有规则数量:", existingRules.length);
+    
+    chrome.declarativeNetRequest.updateDynamicRules(
+      {
+        removeRuleIds: existingRules.map((rule) => rule.id),
+        addRules: rules
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error("更新规则失败:", chrome.runtime.lastError);
+        } else {
+          console.log("资源替换规则已更新，规则数量:", rules.length);
+          // 输出所有规则详情
+          // rules.forEach((rule, index) => {
+          //   console.log(`规则 ${index + 1}:`, {
+          //     id: rule.id,
+          //     urlFilter: rule.condition.urlFilter,
+          //     resourceType: rule.condition.resourceTypes[0]
+          //   });
+          // });
+        }
+      }
+    )
+  });
 }

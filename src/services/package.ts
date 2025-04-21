@@ -117,7 +117,7 @@ export const processZipFile = async (file: File): Promise<Package | null> => {
     }
 
     // 处理zip包中的所有文件
-    const files: Record<string, ArrayBuffer | string> = {}
+    const files: Record<string, string> = {}
     const promises: Promise<void>[] = []
 
     contents.forEach((path, fileEntry) => {
@@ -147,8 +147,6 @@ export const processZipFile = async (file: File): Promise<Package | null> => {
     return null
   }
 }
-
-
 
 // export const extractCssJsFiles = (
 //   pkg: Package

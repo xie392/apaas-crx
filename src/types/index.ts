@@ -7,7 +7,7 @@ export interface Package {
   id: string
   name: string
   files: {
-    [filename: string]: string | ArrayBuffer | Blob // filename -> blob URL
+    [filename: string]: string  // filename -> blob URL
   }
   config: ApaasConfig
   uploadedAt: number
