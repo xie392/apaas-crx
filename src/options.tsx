@@ -558,7 +558,7 @@ const Options: React.FC = () => {
             variant="outline"
             onClick={() => setShowHelp(!showHelp)}
             className="tw-mr-2">
-            <SettingsIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+            <SettingsIcon className="tw-h-4 tw-w-4 tw-mr-1.5" />
             {showHelp ? "隐藏帮助" : "显示帮助"}
           </Button>
           {!isCreating && !editingApp && (

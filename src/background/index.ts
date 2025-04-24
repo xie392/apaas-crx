@@ -1,0 +1,169 @@
+import { APP_INIT, REPLACEMENT_UPDATED } from "~lib/constants"
+import { extractDomainFromPattern, matchApp } from "~lib/utils"
+import type { Application, Package } from "~types"
+
+import { injectedCssHelper, injectedScriptHelper } from "./injected-helper"
+
+chrome.runtime.onMessage.addListener((request, sender) => {
+  if (request.action === APP_INIT) {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      matchApp(sender.url).then((apps) => {
+        if (apps.isPattern && apps.app && apps.app?.enabled) {
+          updateRedirectRules(tab.id, apps.app)
+        } else {
+          clearRedirectRules()
+        }
+      })
+    })
+  }
+})
+
+/**
+ * 向 Chrome 扩展的弹出窗口发送消息
+ * @param message 要发送的消息内容
+ * @description 该函数通过 Chrome 扩展 API 查询当前活动标签页，并向其发送指定消息
+ */
+function sendToPopup(message: any) {
+  chrome.runtime.sendMessage({
+    action: REPLACEMENT_UPDATED,
+    ...message
+  })
+}
+
+/**
+ * 清除所有动态重定向规则
+ */
+function clearRedirectRules() {
+  chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
+    chrome.declarativeNetRequest.updateDynamicRules(
+      {
+        removeRuleIds: existingRules.map((rule) => rule.id),
+        addRules: []
+      },
+      () => {
+        console.log(`%c已禁用脚本替换功能`, "color: #f00")
+      }
+    )
+  })
+}
+
+/**
+ * 更新 Chrome 扩展的重定向规则
+ *
+ * @param app Application 对象，包含应用配置信息
+ * @description
+ * 该函数根据应用配置更新 Chrome 扩展的动态重定向规则：
+ * - 如果应用没有上传包，则直接返回
+ * - 如果功能被禁用，清除所有现有规则
+ * - 根据配置的 URL 模式和包文件创建新的重定向规则
+ * - 支持 JS 和 CSS 文件的重定向
+ * - 规则仅应用于指定域名范围
+ */
+function updateRedirectRules(tabId: number, app: Application) {
+  // 如果没有上传任何包
+  if (!app.packages.length) return
+
+  // 如果功能被禁用，清除所有规则
+  if (!app.enabled || !app) {
+    clearRedirectRules()
+    return
+  }
+
+  // 从匹配模式中提取域名部分，用于更精确的匹配
+  const domains = app.urlPatterns.map(extractDomainFromPattern)
+
+  // 构建所有需要重定向的文件映射
+  const scriptMappings: Record<string, ArrayBuffer> = {}
+
+  app.packages.forEach((pkg: Package) => {
+    const jsFileName = pkg.config.outputName + ".umd.js"
+    const cssFileName = pkg.config.outputName + ".css"
+    const wookerFileName = pkg.config.outputName + ".umd.worker.js"
+    if (pkg.files[jsFileName]) {
+      scriptMappings[`*${jsFileName}`] = pkg.files[jsFileName]
+    }
+    if (pkg.files[cssFileName]) {
+      scriptMappings[`*${cssFileName}`] = pkg.files[cssFileName]
+    }
+    if (pkg.files[wookerFileName]) {
+      scriptMappings[`*${wookerFileName}`] = pkg.files[wookerFileName]
+    }
+  })
+
+  const files: string[] = []
+  // 将脚本映射传递给当前活动标签页
+  Object.entries(scriptMappings).forEach(([fileName, buffer]) => {
+    injectScriptWithEval(tabId, fileName, buffer)
+    files.push(fileName)
+  })
+
+  // 发送消息给 Popup
+  sendToPopup({ files })
+
+  // 创建重定向规则
+  const rules: chrome.declarativeNetRequest.Rule[] = Object.entries(
+    scriptMappings
+  ).map(([fileName], index) => {
+    console.log(`Rule ${index + 1}: ${fileName} => Blocked and Injected`)
+    return {
+      id: index + 1, // 规则ID必须是正整数
+      priority: 1,
+      action: {
+        type: chrome.declarativeNetRequest.RuleActionType.BLOCK
+      },
+      condition: {
+        urlFilter: `*${fileName}`,
+        domains,
+        resourceTypes: [chrome.declarativeNetRequest.ResourceType.SCRIPT]
+      }
+    }
+  })
+
+  // 更新动态规则
+  chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: rules.map((rule) => rule.id),
+    addRules: rules
+  })
+}
+
+/**
+ * 使用 eval 动态注入脚本到页面中
+ * @param tabId - 当前标签页 ID
+ * @param fileName - 脚本文件名
+ * @param base64Content - Base64 编码的脚本内容
+ */
+function injectScriptWithEval(
+  tabId: number,
+  fileName: string,
+  buffer: ArrayBuffer
+) {
+  const decoder = new TextDecoder("utf-8")
+  const content = decoder.decode(buffer)
+
+  const fileNameArr = fileName?.split(".")
+  const name = fileNameArr?.shift()?.replace("*", "")
+  const type = fileNameArr?.pop()
+  const isJs = type === "js"
+  const isWorker = fileNameArr?.slice(-2)?.includes("worker")
+  const isCss = type === "css"
+  const isUmdJs = isJs && !isWorker && fileNameArr?.slice(-2)?.includes("umd")
+
+  if (isUmdJs) {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: injectedScriptHelper,
+      args: [name, isWorker, content]
+    })
+  }
+
+  if (isCss) {
+    console.log("注入css", isCss, content)
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: injectedCssHelper,
+      args: [content]
+    })
+  }
+}

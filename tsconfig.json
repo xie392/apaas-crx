@@ -6,7 +6,7 @@
     "./**/*.ts",
     "./**/*.tsx",
     "src/content.ts.bak"
-  ],
+, "src/background.ts.bakl"  ],
   "compilerOptions": {
     "paths": {
       "~*": ["src/*"]

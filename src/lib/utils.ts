@@ -1,6 +1,9 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+import { getApps } from "~services/storage"
+import type { Application } from "~types"
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
 }
@@ -22,29 +25,6 @@ export function urlMatchesPatterns(url: string, patterns: string[]): boolean {
     const matches = regex.test(url)
     return matches
   })
-}
-
-/**
- * 将Base64字符串转换为Blob对象，并返回可用于Chrome扩展的数据URL
- * @param base64Data 完整的Base64字符串（可包含data:前缀）
- * @param contentType MIME类型，默认为'application/javascript'
- * @returns 返回数据URL字符串
- */
-export function base64ToBlob(
-  base64Data: string,
-  contentType: string = "application/javascript"
-): string {
-  if (!base64Data) throw new Error("Base64数据不能为空")
-  try {
-    // 判断是否已经是data:URL格式
-    if (base64Data.startsWith('data:'))  return base64Data;
-    // 不是data:URL格式，需要转换
-    return `data:${contentType};base64,${base64Data}`;
-  } catch (error) {
-    throw new Error(
-      `Base64转换失败: ${error instanceof Error ? error.message : String(error)}`
-    )
-  }
 }
 
 /**
@@ -71,5 +51,31 @@ export function extractDomainFromPattern(pattern: string): string {
     console.error("提取域名失败:", e)
     // 如果提取失败，使用原始匹配模式
     return pattern.replace(/^https?:\/\//, "").split("/")[0]
+  }
+}
+
+/**
+ * 根据给定的URL匹配应用程序
+ * @param url - 需要匹配的URL字符串
+ * @returns 返回一个Promise,包含匹配结果对象
+ *          isPattern: 是否匹配成功
+ *          app: 匹配到的应用程序,未匹配则为null
+ */
+export async function matchApp(
+  url: string
+): Promise<{ isPattern: boolean; app: Application }> {
+  const apps = await getApps()
+  let isPattern = false
+  let newApp: Application = null
+  for (const app of apps) {
+    if (urlMatchesPatterns(url, app.urlPatterns)) {
+      isPattern = true
+      newApp = app
+      break
+    }
+  }
+  return {
+    isPattern,
+    app: newApp
   }
 }
