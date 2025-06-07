@@ -86,7 +86,8 @@ export async function matchApp(
  * @returns 拦截规则
  */
 export function generateRules<T = ArrayBuffer>(
-  scriptMappings: Record<string, T>
+  scriptMappings: Record<string, T>,
+  domains: string[] = []
 ): chrome.declarativeNetRequest.Rule[] {
   return Object.entries(scriptMappings).map(([fileName], index) => {
     return {
@@ -97,6 +98,7 @@ export function generateRules<T = ArrayBuffer>(
       },
       condition: {
         urlFilter: `*${fileName}`,
+        domains,
         resourceTypes: [
           chrome.declarativeNetRequest.ResourceType.SCRIPT,
           chrome.declarativeNetRequest.ResourceType.STYLESHEET
@@ -126,18 +128,20 @@ export async function interceptRequest(
 /**
  * 分割文件名
  * @param fileName 文件名
- * @returns 文件名、文件类型、是否是js、是否是css
+ * @returns 文件名、文件类型、是否是js、是否是css、是否是worker
  */
 export function splitFileNames(fileName: string): {
   name: string
   type: string
   isJs: boolean
   isCss: boolean
+  isWorker: boolean
 } {
   const fileNameArr = fileName.split(".")
   const name = fileNameArr?.shift()?.replace("*", "")
   const type = fileNameArr?.pop()
   const isJs = type === "js"
   const isCss = type === "css"
-  return { name, type, isJs, isCss }
+  const isWorker = fileName.includes("worker") && isJs
+  return { name, type, isJs, isCss, isWorker }
 }

@@ -13,9 +13,9 @@ export interface Package {
   uploadedAt: number
 }
 
-export interface DevPackage {
-  id: string
-  name: string
+export interface DevConfig {
+  packageName: string
+  devUrl: string
 }
 
 export interface Application {
@@ -24,11 +24,9 @@ export interface Application {
   enabled: boolean
   urlPatterns: string[]
   packages: Package[]
+  devConfigs?: DevConfig[]
   createdAt: number
   updatedAt: number
-  // +++ 新增开发环境的配置 +++
-  devEnabled?: boolean
-  devPackages?: DevPackage[]
 }
 
 export interface ReplacementInfo {

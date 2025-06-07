@@ -3,8 +3,7 @@ import { extractDomainFromPattern, matchApp } from "~lib/utils"
 import type { Application, Package } from "~types"
 
 import { injectedCssHelper, injectedScriptHelper } from "./injected-helper"
-
-import "./url-replacement-worker"
+import { injectResource } from "./url-replacement-worker"
 
 chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.action === APP_INIT) {
@@ -62,6 +61,12 @@ function clearRedirectRules() {
  * - 规则仅应用于指定域名范围
  */
 function updateRedirectRules(tabId: number, app: Application) {
+  // 从匹配模式中提取域名部分，用于更精确的匹配
+  const domains = app.urlPatterns.map(extractDomainFromPattern)
+
+  // 如果有开发配置
+  if (app.devConfigs.length) injectResource(tabId, app, domains)
+
   // 如果没有上传任何包
   if (!app.packages.length) return
 
@@ -70,9 +75,6 @@ function updateRedirectRules(tabId: number, app: Application) {
     clearRedirectRules()
     return
   }
-
-  // 从匹配模式中提取域名部分，用于更精确的匹配
-  const domains = app.urlPatterns.map(extractDomainFromPattern)
 
   // 构建所有需要重定向的文件映射
   const scriptMappings: Record<string, ArrayBuffer> = {}

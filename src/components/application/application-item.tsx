@@ -22,14 +22,6 @@ export const ApplicationItem: React.FC<ApplicationItemProps> = ({
       <div className="tw-flex tw-justify-between tw-items-center tw-mb-3">
         <h3 className="tw-text-lg tw-font-medium">{app.name}</h3>
         <div className="tw-flex tw-items-center">
-          {/* <Switch
-            checked={app.enabled}
-            onCheckedChange={onToggle}
-            className="tw-mr-2"
-          />
-          <span className="tw-text-sm tw-text-gray-500 tw-mr-3">
-            {app.enabled ? "已启用开发替换" : "已禁用开发替换"}
-          </span> */}
           <Switch
             checked={app.enabled}
             onCheckedChange={onToggle}
@@ -69,6 +61,11 @@ export const ApplicationItem: React.FC<ApplicationItemProps> = ({
         <div className="tw-mb-2">
           <span className="tw-font-medium">包数量：</span> {app.packages.length}
         </div>
+        {app.devConfigs && app.devConfigs.length > 0 && (
+          <div className="tw-mb-2">
+            <span className="tw-font-medium">开发配置：</span> {app.devConfigs.length}
+          </div>
+        )}
       </div>
     </div>
   )

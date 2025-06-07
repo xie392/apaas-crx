@@ -1,9 +1,9 @@
 import { SSEClient } from "~lib/sse-client"
 import { generateRules, interceptRequest, splitFileNames } from "~lib/utils"
+import type { Application } from "~types"
 
-async function applyRules(outputName: string = "") {
+async function applyRules(outputName: string, domains: string[] = []) {
   try {
-    // const domains = app.urlPatterns.map(extractDomainFromPattern)
     const jsFileName = outputName + ".umd.js"
     const cssFileName = outputName + ".css"
     const wookerFileName = outputName + ".umd.worker.js"
@@ -13,7 +13,7 @@ async function applyRules(outputName: string = "") {
       [`*${cssFileName}`]: cssFileName,
       [`*${wookerFileName}`]: wookerFileName
     }
-    const rules = generateRules(scriptMappings)
+    const rules = generateRules(scriptMappings, domains)
     await interceptRequest(rules)
   } catch (error) {
     console.error("应用网络请求拦截规则失败:", error)
@@ -21,15 +21,14 @@ async function applyRules(outputName: string = "") {
 }
 
 async function replaceUrl(url: string, name: string) {
-  console.log("【开始插入】：", url)
-  const oldScript = document.getElementById(name)
+  const oldScript = document.getElementById(`${name}-script`)
   if (oldScript) oldScript.remove()
   const content = await fetch(url).then((res) => res.text())
   const blob = new Blob([content], { type: "text/javascript" })
   const blobUrl = URL.createObjectURL(blob)
   const script = document.createElement("script")
   script.src = blobUrl
-  script.id = name
+  script.id = `${name}-script`
   document.body.appendChild(script)
   script.onload = () => {
     const plugin = window[name]
@@ -38,6 +37,18 @@ async function replaceUrl(url: string, name: string) {
       console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
     }
   }
+}
+
+async function replaceStyle(url: string, name: string) {
+  const oldStyle = document.getElementById(`${name}-style`)
+  if (oldStyle) oldStyle.remove()
+
+  const content = await fetch(url).then((res) => res.text())
+  const style = document.createElement("style")
+  style.id = `${name}-style`
+  style.textContent = content
+  document.head.appendChild(style)
+  console.info(`%c【APaaS扩展】: ${name} 样式已更新`, "color: #28a745")
 }
 
 function executeScript(tabId: number, args: any[]) {
@@ -49,42 +60,39 @@ function executeScript(tabId: number, args: any[]) {
   })
 }
 
-// function executeStyle(tabId:number) {
-//   chrome.scripting.executeScript({
-//     target: { tabId },
-//     world: "MAIN",
-//     func: ,
-//   })
-// }
+function executeStyle(tabId: number, args: any[]) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: replaceStyle,
+    args
+  })
+}
 
-//监听标签页更新事件
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (
-    changeInfo.status === "complete" &&
-    tab.url &&
-    tab.url.includes("https://crm-fw.yuchaiqas.com")
-  ) {
-    applyRules()
+export async function injectResource(
+  tabId: number,
+  app: Application,
+  domains: string[] = []
+) {
+  const devConfigs = app.devConfigs
 
-    const url = "http://127.0.0.1:3000/apaas-custom-test.umd.js"
+  devConfigs.forEach(async (config) => {
+    const { packageName, devUrl } = config
+    applyRules(packageName, domains)
+    executeScript(tabId, [`${devUrl}/${packageName}.umd.js`, packageName])
+    executeStyle(tabId, [`${devUrl}/${packageName}.css`, packageName])
 
-    executeScript(tabId, [url, "apaas-custom-test"])
-
-    const sseClient = new SSEClient("http://127.0.0.1:3000/sse")
+    const sseClient = new SSEClient(`${devUrl}/sse`)
     sseClient.onMessage((data) => {
       const { event, filePath } = data
       if (event === "change") {
-        const { isJs } = splitFileNames(filePath)
-        if (isJs) {
-          executeScript(tabId, [url, "apaas-custom-test"])
-        }
-        // if (isCss) {
-        //   executeStyle(tabId)
-        // }
+        const { isJs, isCss } = splitFileNames(filePath)
+        if (isJs) executeScript(tabId, [devUrl, packageName])
+        if (isCss) executeStyle(tabId, [devUrl, packageName])
       }
     })
     sseClient.onError((error) => {
-      console.error("【SSE错误】：", error)
+      console.error(`【SSE错误 (${packageName})】：`, error)
     })
-  }
-})
+  })
+}

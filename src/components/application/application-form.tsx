@@ -1,5 +1,9 @@
-
-import { AlertCircleIcon, CheckCircleIcon } from "lucide-react"
+import {
+  AlertCircleIcon,
+  CheckCircleIcon,
+  EditIcon,
+  TrashIcon
+} from "lucide-react"
 import { useState } from "react"
 import { useDropzone } from "react-dropzone"
 import { v4 as uuidv4 } from "uuid"
@@ -9,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "~components/ui/alert"
 import { Button } from "~components/ui/button"
 import { Switch } from "~components/ui/switch"
 import { processZipFile } from "~services/package"
-import type { Application, Package } from "~types"
+import type { Application, DevConfig, Package } from "~types"
 
 interface ApplicationFormProps {
   app?: Application
@@ -68,8 +72,6 @@ interface BasicInfoFormProps {
   setName: (name: string) => void
   urlPatterns: string
   setUrlPatterns: (patterns: string) => void
-  // enabled: boolean
-  // setEnabled: (enabled: boolean) => void
   isUploading: boolean
 }
 
@@ -119,8 +121,6 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
 interface PackageUploadAreaProps {
   editingPackageId: string | null
   handleCancelEdit: () => void
-  enabled: boolean
-  setEnabled: (enabled: boolean) => void
   isUploading: boolean
   dropzoneProps: ReturnType<typeof useDropzone>
 }
@@ -128,8 +128,6 @@ interface PackageUploadAreaProps {
 const PackageUploadArea: React.FC<PackageUploadAreaProps> = ({
   editingPackageId,
   handleCancelEdit,
-  enabled,
-  setEnabled,
   isUploading,
   dropzoneProps
 }) => {
@@ -158,12 +156,6 @@ const PackageUploadArea: React.FC<PackageUploadAreaProps> = ({
               取消编辑
             </Button>
           )}
-          <span className="tw-text-sm tw-mr-2">启用应用</span>
-          <Switch
-            checked={enabled}
-            onCheckedChange={setEnabled}
-            disabled={isUploading}
-          />
         </div>
       </div>
 
@@ -268,6 +260,183 @@ const FormActions: React.FC<FormActionsProps> = ({ onCancel, isUploading }) => {
   )
 }
 
+interface DevConfigFormProps {
+  devConfigs: DevConfig[]
+  setDevConfigs: (configs: DevConfig[]) => void
+  isUploading: boolean
+}
+
+const DevConfigForm: React.FC<DevConfigFormProps> = ({
+  devConfigs,
+  setDevConfigs,
+  isUploading
+}) => {
+  const [packageName, setPackageName] = useState("")
+  const [devUrl, setDevUrl] = useState("")
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+
+  const handleAddConfig = () => {
+    if (!packageName || !devUrl) return
+
+    const newConfig = { packageName, devUrl };
+    let newConfigs = [...devConfigs];
+
+    if (editingIndex !== null) {
+      // 编辑现有配置
+      newConfigs[editingIndex] = newConfig;
+      setEditingIndex(null);
+    } else {
+      // 检查是否已存在相同包名的配置
+      const existingIndex = devConfigs.findIndex(
+        (config) => config.packageName === packageName
+      );
+      if (existingIndex >= 0) {
+        // 更新现有配置
+        newConfigs[existingIndex] = newConfig;
+      } else {
+        // 添加新配置
+        newConfigs = [...devConfigs, newConfig];
+      }
+    }
+
+    setDevConfigs(newConfigs);
+    
+    // 清空输入框
+    setPackageName("");
+    setDevUrl("");
+  }
+
+  const handleEditConfig = (index: number) => {
+    const config = devConfigs[index]
+    setPackageName(config.packageName)
+    setDevUrl(config.devUrl)
+    setEditingIndex(index)
+  }
+
+  const handleCancelEdit = () => {
+    setPackageName("")
+    setDevUrl("")
+    setEditingIndex(null)
+  }
+
+  const handleRemoveConfig = (packageName: string) => {
+    setDevConfigs(
+      devConfigs.filter((config) => config.packageName !== packageName)
+    )
+    // 如果正在编辑的配置被删除，取消编辑状态
+    if (
+      editingIndex !== null &&
+      devConfigs[editingIndex]?.packageName === packageName
+    ) {
+      handleCancelEdit()
+    }
+  }
+
+  return (
+    <div>
+      <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+        <h3 className="tw-font-medium">开发配置</h3>
+        {editingIndex !== null && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleCancelEdit}
+            className="tw-mr-3"
+            disabled={isUploading}>
+            取消编辑
+          </Button>
+        )}
+      </div>
+
+      <div className="tw-flex tw-space-x-2 tw-mb-3">
+        <div className="tw-flex-1">
+          <label className="tw-block tw-text-sm tw-font-medium tw-mb-1">
+            包名
+          </label>
+          <input
+            type="text"
+            value={packageName}
+            onChange={(e) => setPackageName(e.target.value)}
+            placeholder="例如: apaas-custom-test"
+            className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary"
+            disabled={isUploading}
+          />
+        </div>
+        <div className="tw-flex-1">
+          <label className="tw-block tw-text-sm tw-font-medium tw-mb-1">
+            开发地址
+          </label>
+          <input
+            type="text"
+            value={devUrl}
+            onChange={(e) => setDevUrl(e.target.value)}
+            placeholder="例如: http://127.0.0.1:3000"
+            className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary"
+            disabled={isUploading}
+          />
+        </div>
+        <div className="tw-flex tw-items-end">
+          <Button
+            type="button"
+            onClick={handleAddConfig}
+            disabled={isUploading || !packageName || !devUrl}
+            className="tw-mb-0">
+            {editingIndex !== null ? "保存" : "添加"}
+          </Button>
+        </div>
+      </div>
+
+      {devConfigs.length > 0 && (
+        <div className="tw-space-y-2">
+          {devConfigs.map((config, index) => {
+            const isEditing = editingIndex === index;
+            return (
+              <div
+                key={index}
+                className={`tw-flex tw-justify-between tw-items-center tw-p-3 tw-mb-2 tw-rounded ${
+                  isEditing
+                    ? "tw-bg-yellow-50 tw-border-2 tw-border-yellow-500 dark:tw-bg-yellow-950/30"
+                    : "tw-bg-gray-100 dark:tw-bg-gray-800"
+                }`}>
+                <div>
+                  <span className="tw-font-medium">{config.packageName}</span>
+                  <span className="tw-mx-2 tw-text-gray-400">→</span>
+                  <span className="tw-text-gray-600 dark:tw-text-gray-300">
+                    {config.devUrl}
+                  </span>
+                </div>
+                <div className="tw-flex tw-space-x-2">
+                  <Button
+                    variant={isEditing ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleEditConfig(index)}
+                    disabled={isUploading || isEditing}
+                    className={
+                      isEditing
+                        ? "tw-bg-yellow-500 tw-text-white hover:tw-bg-yellow-600"
+                        : ""
+                    }>
+                    <EditIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+                    {isEditing ? "编辑中" : "编辑"}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleRemoveConfig(config.packageName)}
+                    disabled={isUploading}>
+                    <TrashIcon className="tw-h-4 tw-w-4 tw-mr-1" />
+                    删除
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export const ApplicationForm: React.FC<ApplicationFormProps> = ({
   app,
@@ -280,6 +449,9 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
   )
   const [packages, setPackages] = useState<Package[]>(app?.packages || [])
   const [enabled, setEnabled] = useState(app?.enabled !== false)
+  const [devConfigs, setDevConfigs] = useState<DevConfig[]>(
+    app?.devConfigs || []
+  )
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null)
@@ -296,12 +468,10 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
 
       try {
         for (const file of acceptedFiles) {
-          // 显示正在处理的文件名
           setSuccess(`正在处理文件：${file.name}...`)
 
           const pkg = await processZipFile(file)
           if (pkg) {
-            // 检查是否正在编辑已有包
             if (editingPackageId) {
               // 替换现有包
               setPackages((prev) =>
@@ -312,7 +482,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
                 )
               )
               setSuccess(`文件 ${file.name} 已成功替换`)
-              setEditingPackageId(null) // 重置编辑状态
+              setEditingPackageId(null)
             } else {
               // 检查是否存在同名的包
               const hasDuplicateOutputName = packages.some(
@@ -324,7 +494,6 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
                   `已存在输出名称为 ${pkg.config.outputName} 的包。如需覆盖，请点击对应包的"编辑"按钮。`
                 )
               } else {
-                // 添加新包
                 setPackages((prev) => [...prev, pkg])
                 setSuccess(`文件 ${file.name} 上传成功`)
               }
@@ -343,46 +512,38 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
         setIsUploading(false)
       }
     },
-    disabled: isUploading // 上传过程中禁用拖放功能
+    disabled: isUploading
   })
 
   const handleDeletePackage = (id: string) => {
     setPackages((prev) => prev.filter((pkg) => pkg.id !== id))
-    // 如果正在编辑的包被删除，重置编辑状态
     if (id === editingPackageId) {
       setEditingPackageId(null)
     }
   }
 
   const handleEditPackage = (id: string) => {
-    // 如果当前正在编辑，并且点击了相同的包，则取消编辑
     if (editingPackageId === id) {
       setEditingPackageId(null)
       setSuccess(null)
       return
     }
 
-    // 如果当前正在编辑其他包，先确认是否切换
     if (editingPackageId && editingPackageId !== id) {
       const confirmSwitch = window.confirm(
         "您正在编辑另一个包，是否切换到编辑当前选择的包？"
       )
-      if (!confirmSwitch) {
-        return
-      }
+      if (!confirmSwitch) return;
     }
 
     setEditingPackageId(id)
 
-    // 找到当前编辑的包
     const pkg = packages.find((p) => p.id === id)
     if (pkg) {
-      // 设置成功消息，使用更醒目的提示
       setSuccess(
         `请上传新的包以替换: "${pkg.name}" (输出名称: ${pkg.config.outputName})`
       )
 
-      // 自动滚动到上传区域，提高用户体验
       setTimeout(() => {
         const uploadArea = document.querySelector(".upload-area")
         if (uploadArea) {
@@ -400,17 +561,13 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // 如果正在上传，不允许提交
     if (isUploading) return
 
-    // 如果用户正在编辑包但未完成，询问是否继续
     if (editingPackageId) {
       const confirmContinue = window.confirm(
         "您正在编辑一个包，但尚未上传新文件替换。是否继续保存应用？"
       )
-      if (!confirmContinue) {
-        return
-      }
+      if (!confirmContinue) return;
     }
 
     const patterns = urlPatterns
@@ -424,6 +581,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
       enabled,
       urlPatterns: patterns,
       packages,
+      devConfigs,
       createdAt: app?.createdAt || Date.now(),
       updatedAt: Date.now()
     }
@@ -439,16 +597,18 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
         setName={setName}
         urlPatterns={urlPatterns}
         setUrlPatterns={setUrlPatterns}
-        // enabled={enabled}
-        // setEnabled={setEnabled}
+        isUploading={isUploading}
+      />
+
+      <DevConfigForm
+        devConfigs={devConfigs}
+        setDevConfigs={setDevConfigs}
         isUploading={isUploading}
       />
 
       <PackageUploadArea
         editingPackageId={editingPackageId}
         handleCancelEdit={handleCancelEdit}
-        enabled={enabled}
-        setEnabled={setEnabled}
         isUploading={isUploading}
         dropzoneProps={dropzoneProps}
       />
