@@ -20,7 +20,7 @@
     "idb-keyval": "^6.2.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.488.0",
-    "plasmo": "0.90.3",
+    "plasmo": "0.90.5",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-dropzone": "^14.3.8",
