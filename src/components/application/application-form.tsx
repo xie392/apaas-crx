@@ -11,7 +11,6 @@ import { v4 as uuidv4 } from "uuid"
 import { PackageItem } from "~components/package-item"
 import { Alert, AlertDescription, AlertTitle } from "~components/ui/alert"
 import { Button } from "~components/ui/button"
-import { Switch } from "~components/ui/switch"
 import { processZipFile } from "~services/package"
 import type { Application, DevConfig, Package } from "~types"
 

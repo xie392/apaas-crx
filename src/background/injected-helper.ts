@@ -1,3 +1,5 @@
+import { injectScript, injectStyle } from "~lib/resource-injector"
+
 declare global {
   interface Window {
     vue: any
@@ -9,32 +11,21 @@ export async function injectedScriptHelper(
   isWorker: boolean,
   content: string
 ) {
+  // 如果不是worker文件，使用封装的注入函数
+  if (!isWorker) {
+    await injectScript(content, fileName, true)
+    return
+  }
+  
+  // worker文件特殊处理
   const blob = new Blob([content], { type: "text/javascript" })
   const url = URL.createObjectURL(blob)
   const script = document.createElement("script")
   script.src = url
   document.body.appendChild(script)
-
-  // 主文件需要手动注册到 Vue 实例
-  if (!isWorker) {
-    script.onload = () => {
-      const plugin = window[fileName]
-      if (window?.vue && plugin) {
-        plugin?.default?.install(window.vue, {})
-        console.info(
-          "%c【APaaS扩展】: 插件已成功注册到 Vue 实例",
-          "color: #007bff"
-        )
-      }
-    }
-  }
 }
 
 export async function injectedCssHelper(content: string) {
-  const blob = new Blob([content], { type: "text/css" })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("link")
-  link.rel = "stylesheet"
-  link.href = url
-  document.body.appendChild(link)
+  // 使用封装的样式注入函数，传入一个通用名称
+  await injectStyle(content, "injected-css", true, true)
 }

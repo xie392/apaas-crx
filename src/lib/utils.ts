@@ -81,51 +81,6 @@ export async function matchApp(
 }
 
 /**
- * 生成拦截规则
- * @param scriptMappings 脚本映射
- * @returns 拦截规则
- */
-export function generateRules<T = ArrayBuffer>(
-  scriptMappings: Record<string, T>,
-  domains: string[] = []
-): chrome.declarativeNetRequest.Rule[] {
-  return Object.entries(scriptMappings).map(([fileName], index) => {
-    return {
-      id: index + 1,
-      priority: 1,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.BLOCK
-      },
-      condition: {
-        urlFilter: `*${fileName}`,
-        domains,
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.SCRIPT,
-          chrome.declarativeNetRequest.ResourceType.STYLESHEET
-        ]
-      }
-    }
-  })
-}
-
-/**
- * 拦截请求
- * @param rules 拦截规则
- */
-export async function interceptRequest(
-  rules: chrome.declarativeNetRequest.Rule[]
-) {
-  const currentRules = await chrome.declarativeNetRequest.getDynamicRules()
-  const ruleIds = currentRules.map((rule) => rule.id)
-
-  // 更新动态规则
-  await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: ruleIds,
-    addRules: rules
-  })
-}
-
-/**
  * 分割文件名
  * @param fileName 文件名
  * @returns 文件名、文件类型、是否是js、是否是css、是否是worker

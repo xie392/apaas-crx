@@ -1,4 +1,5 @@
 import { APP_INIT, REPLACEMENT_UPDATED } from "~lib/constants"
+import { clearRedirectRules } from "~lib/rule-manager"
 import { extractDomainFromPattern, matchApp } from "~lib/utils"
 import type { Application, Package } from "~types"
 
@@ -28,23 +29,6 @@ function sendToPopup(message: any) {
   chrome.runtime.sendMessage({
     action: REPLACEMENT_UPDATED,
     ...message
-  })
-}
-
-/**
- * 清除所有动态重定向规则
- */
-function clearRedirectRules() {
-  chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
-    chrome.declarativeNetRequest.updateDynamicRules(
-      {
-        removeRuleIds: existingRules.map((rule) => rule.id),
-        addRules: []
-      },
-      () => {
-        console.log(`%c已禁用脚本替换功能`, "color: #f00")
-      }
-    )
   })
 }
 
@@ -103,41 +87,13 @@ function updateRedirectRules(tabId: number, app: Application) {
 
   // 发送消息给 Popup
   sendToPopup({ files })
-
-  // 创建重定向规则
-  const rules: chrome.declarativeNetRequest.Rule[] = Object.entries(
-    scriptMappings
-  ).map(([fileName], index) => {
-    console.log(`Rule ${index + 1}: ${fileName} => Blocked and Injected`)
-    return {
-      id: index + 1, // 规则ID必须是正整数
-      priority: 1,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.BLOCK
-      },
-      condition: {
-        urlFilter: `*${fileName}`,
-        domains,
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.SCRIPT,
-          chrome.declarativeNetRequest.ResourceType.STYLESHEET
-        ]
-      }
-    }
-  })
-
-  // 更新动态规则
-  chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: rules.map((rule) => rule.id),
-    addRules: rules
-  })
 }
 
 /**
  * 使用 eval 动态注入脚本到页面中
  * @param tabId - 当前标签页 ID
  * @param fileName - 脚本文件名
- * @param base64Content - Base64 编码的脚本内容
+ * @param buffer - 脚本内容的 ArrayBuffer
  */
 function injectScriptWithEval(
   tabId: number,
@@ -165,7 +121,6 @@ function injectScriptWithEval(
   }
 
   if (isCss) {
-    console.log("注入css", isCss, content)
     chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
