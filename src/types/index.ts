@@ -13,6 +13,11 @@ export interface Package {
   uploadedAt: number
 }
 
+export interface DevPackage {
+  id: string
+  name: string
+}
+
 export interface Application {
   id: string
   name: string
@@ -21,6 +26,9 @@ export interface Application {
   packages: Package[]
   createdAt: number
   updatedAt: number
+  // +++ 新增开发环境的配置 +++
+  devEnabled?: boolean
+  devPackages?: DevPackage[]
 }
 
 export interface ReplacementInfo {

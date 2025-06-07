@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <script src="./test.js"></script>
+    <script>
+      // 创建 sse 链接
+      const eventSource = new EventSource("http://127.0.0.1:3000/sse")
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data)
+        console.log("接收到更新通知:", data)
+
+        // 在这里实现页面刷新或局部更新逻辑
+        // if (data.event === "change") {
+        //   console.log(`文件 ${data.filePath} 已更新，正在刷新页面...`)
+        // }
+      }
+
+      eventSource.onerror = (error) => {
+        console.error("SSE 连接错误:", error)
+        if (error.readyState === EventSource.CLOSED) {
+          console.log("SSE 连接已关闭，尝试重新连接...")
+          // 自动重连逻辑（SSE 会自动尝试重连）
+        }
+      }
+    </script>
+  </body>
+</html>

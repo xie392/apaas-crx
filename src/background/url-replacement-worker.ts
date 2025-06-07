@@ -1,84 +1,90 @@
-/**
- * URL替换的Service Worker
- * 用于拦截请求并替换URL
- */
+import { SSEClient } from "~lib/sse-client"
+import { generateRules, interceptRequest, splitFileNames } from "~lib/utils"
 
-import { Storage } from "@plasmohq/storage"
+async function applyRules(outputName: string = "") {
+  try {
+    // const domains = app.urlPatterns.map(extractDomainFromPattern)
+    const jsFileName = outputName + ".umd.js"
+    const cssFileName = outputName + ".css"
+    const wookerFileName = outputName + ".umd.worker.js"
 
-import { URL_REPLACEMENTS_STORAGE_KEY, URL_REPLACEMENT_UPDATED } from "~lib/constants"
-import type { UrlReplacement } from "~types"
-
-console.log("url-replacement-worker running");
-
-
-const storage = new Storage()
-
-/**
- * 获取所有启用的URL替换规则
- */
-async function getEnabledUrlReplacements(): Promise<UrlReplacement[]> {
-  const replacements = await storage.get<UrlReplacement[]>(URL_REPLACEMENTS_STORAGE_KEY)
-  return replacements?.filter(r => r.enabled) || []
+    const scriptMappings: Record<string, string> = {
+      [`*${jsFileName}`]: jsFileName,
+      [`*${cssFileName}`]: cssFileName,
+      [`*${wookerFileName}`]: wookerFileName
+    }
+    const rules = generateRules(scriptMappings)
+    await interceptRequest(rules)
+  } catch (error) {
+    console.error("应用网络请求拦截规则失败:", error)
+  }
 }
 
-/**
- * 更新URL替换规则
- */
-export async function updateUrlReplacementRules() {
-  const enabledReplacements = await getEnabledUrlReplacements()
-  
-  // 先清除所有现有规则
-  chrome.declarativeNetRequest.getDynamicRules(existingRules => {
-    // 获取与URL替换相关的规则ID（我们使用10000以上的ID作为URL替换规则）
-    const urlReplacementRuleIds = existingRules
-      .filter(rule => rule.id >= 10000)
-      .map(rule => rule.id)
-    
-    // 创建新规则
-    const newRules = enabledReplacements.map((replacement, index) => {
-      return {
-        id: 10000 + index, // 使用10000以上的ID避免与其他规则冲突
-        priority: 1,
-        action: {
-          type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
-          redirect: {
-            url: replacement.targetUrl
-          }
-        },
-        condition: {
-          urlFilter: replacement.sourceUrl,
-          resourceTypes: [
-            chrome.declarativeNetRequest.ResourceType.XMLHTTPREQUEST,
-            chrome.declarativeNetRequest.ResourceType.SUB_FRAME,
-            chrome.declarativeNetRequest.ResourceType.WEBSOCKET,
-            chrome.declarativeNetRequest.ResourceType.OTHER
-          ]
-        }
-      }
-    })
-    
-    // 更新规则
-    chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: urlReplacementRuleIds,
-      addRules: newRules
-    }, () => {
-      console.log(`已更新URL替换规则，共${newRules.length}条`)
-      
-      // 通知popup更新
-      chrome.runtime.sendMessage({
-        action: URL_REPLACEMENT_UPDATED,
-        replacements: enabledReplacements
-      })
-    })
+async function replaceUrl(url: string, name: string) {
+  console.log("【开始插入】：", url)
+  const oldScript = document.getElementById(name)
+  if (oldScript) oldScript.remove()
+  const content = await fetch(url).then((res) => res.text())
+  const blob = new Blob([content], { type: "text/javascript" })
+  const blobUrl = URL.createObjectURL(blob)
+  const script = document.createElement("script")
+  script.src = blobUrl
+  script.id = name
+  document.body.appendChild(script)
+  script.onload = () => {
+    const plugin = window[name]
+    if (window?.vue && plugin) {
+      plugin?.default?.install(window.vue, {})
+      console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
+    }
+  }
+}
+
+function executeScript(tabId: number, args: any[]) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: replaceUrl,
+    args
   })
 }
 
-// 监听存储变化，当URL替换配置更新时，更新规则
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes[URL_REPLACEMENTS_STORAGE_KEY]) {
-    updateUrlReplacementRules()
+// function executeStyle(tabId:number) {
+//   chrome.scripting.executeScript({
+//     target: { tabId },
+//     world: "MAIN",
+//     func: ,
+//   })
+// }
+
+//监听标签页更新事件
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (
+    changeInfo.status === "complete" &&
+    tab.url &&
+    tab.url.includes("https://crm-fw.yuchaiqas.com")
+  ) {
+    applyRules()
+
+    const url = "http://127.0.0.1:3000/apaas-custom-test.umd.js"
+
+    executeScript(tabId, [url, "apaas-custom-test"])
+
+    const sseClient = new SSEClient("http://127.0.0.1:3000/sse")
+    sseClient.onMessage((data) => {
+      const { event, filePath } = data
+      if (event === "change") {
+        const { isJs } = splitFileNames(filePath)
+        if (isJs) {
+          executeScript(tabId, [url, "apaas-custom-test"])
+        }
+        // if (isCss) {
+        //   executeStyle(tabId)
+        // }
+      }
+    })
+    sseClient.onError((error) => {
+      console.error("【SSE错误】：", error)
+    })
   }
 })
-
-// 初始化时更新规则
-updateUrlReplacementRules()

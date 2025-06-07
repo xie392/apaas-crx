@@ -4,6 +4,8 @@ import type { Application, Package } from "~types"
 
 import { injectedCssHelper, injectedScriptHelper } from "./injected-helper"
 
+import "./url-replacement-worker"
+
 chrome.runtime.onMessage.addListener((request, sender) => {
   if (request.action === APP_INIT) {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
@@ -114,7 +116,10 @@ function updateRedirectRules(tabId: number, app: Application) {
       condition: {
         urlFilter: `*${fileName}`,
         domains,
-        resourceTypes: [chrome.declarativeNetRequest.ResourceType.SCRIPT]
+        resourceTypes: [
+          chrome.declarativeNetRequest.ResourceType.SCRIPT,
+          chrome.declarativeNetRequest.ResourceType.STYLESHEET
+        ]
       }
     }
   })
