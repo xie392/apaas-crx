@@ -42,8 +42,10 @@ export async function injectScript(
 
   script.onload = () => {
     const plugin = window[name]
+
     if (window?.vue && plugin) {
-      plugin?.default?.install(window.vue, {})
+      // TODO：页面刷新时，需要强制安装
+      plugin?.default?.install(window.vue)
       console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
     }
   }

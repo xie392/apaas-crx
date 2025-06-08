@@ -8,3 +8,4 @@ export const config: PlasmoCSConfig = {
 }
 
 chrome.runtime.sendMessage({ action: APP_INIT })
+
