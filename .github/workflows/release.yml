@@ -21,5 +21,33 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: release
+      - name: Package
         run: npm run package
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: chrome-mv3-prod
+          path: build/chrome-mv3-prod.zip
+
+  upload-release:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: chrome-mv3-prod
+          path: .
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: chrome-mv3-prod.zip
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
