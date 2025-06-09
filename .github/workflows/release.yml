@@ -18,16 +18,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'pnpm'
+          cache: 'pnpm'  # 启用pnpm缓存
 
       - name: Install pnpm
-        run: npm install -g pnpm@8  # 指定安装 v8 版本，避免兼容性问题
+        uses: pnpm/action-setup@v2  # 使用官方pnpm安装动作
+        with:
+          version: 8  # 指定pnpm版本
+          run_install: false  # 不自动执行安装，避免冲突
 
       - name: Verify pnpm installation
-        run: pnpm --version  # 确认 pnpm 版本，用于调试
+        run: pnpm --version
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile  # 使用锁文件确保依赖一致性
+        run: pnpm install --frozen-lockfile
 
       - name: Build project
         run: pnpm build
