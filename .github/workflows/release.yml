@@ -24,17 +24,11 @@ jobs:
       - name: Package
         run: npm run package
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: chrome-mv3-prod
-          path: build/chrome-mv3-prod.zip
-
   upload-release:
     needs: release
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write  # 需要此权限来创建 release
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v3
