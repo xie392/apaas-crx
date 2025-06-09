@@ -6,7 +6,6 @@ on:
       - '*'
     branches:
       - master
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,10 +18,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm install -g pnpm'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@8  # 指定安装 v8 版本，避免兼容性问题
+
+      - name: Verify pnpm installation
+        run: pnpm --version  # 确认 pnpm 版本，用于调试
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile  # 使用锁文件确保依赖一致性
 
       - name: Build project
         run: pnpm build
