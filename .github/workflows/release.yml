@@ -2,10 +2,11 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - '*'
     branches:
-      - master
+      - master 
+  tags:
+    - "v*" 
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +19,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install pnpm
         run: npm install -g pnpm
@@ -40,7 +41,7 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v') # 仅在标签推送时创建 Release
     runs-on: ubuntu-latest
 
     steps:
@@ -49,83 +50,23 @@ jobs:
         with:
           name: chrome-mv3-prod
 
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: chrome-mv3-prod.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
-  build-and-release:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Check system resources
-        run: |
-          echo "Disk space:"
-          df -h
-          echo "Memory:"
-          free -h
-          echo "Node version:"
-          node -v
-          echo "npm version:"
-          npm -v
-      
-      - name: Cache pnpm modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-
-            
-      - uses: pnpm/action-setup@v2.2.4
-        with:
-          version: 8.6.12  # 指定稳定版本，避免使用 latest
-          run_install: false  # 关闭自动安装，改为手动执行
-      
-      - name: Verify pnpm installation
-        run: |
-          pnpm --version || echo "pnpm is not installed correctly"
-          which pnpm
-      
-      - name: Install dependencies
-        run: pnpm install
-      
-      - name: Build the extension
-        run: pnpm build
-      
-      - name: Package the extension
-        run: pnpm package
-      
-      - name: Verify build artifacts
-        run: |
-          ls -lah build/
-          if [ -f "build/chrome-mv3-prod.zip" ]; then
-            echo "Chrome extension package found!"
-          else
-            echo "ERROR: Chrome extension package not found!"
-            exit 1
-          fi
-      
-      - name: Create Release
+      - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
 
-      - name: Upload Release Asset
+      - name: Upload to GitHub Release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: build/chrome-mv3-prod.zip
-          asset_name: chrome-extension-${{ github.ref_name }}.zip
+          asset_path: ./chrome-mv3-prod.zip
+          asset_name: chrome-mv3-prod.zip
           asset_content_type: application/zip
