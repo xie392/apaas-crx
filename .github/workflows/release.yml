@@ -1,4 +1,4 @@
-name: Release
+name: Build and Release
 
 on:
   push:
@@ -6,13 +6,71 @@ on:
       - '*'
     branches:
       - master
-
 jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Package project
+        run: pnpm package
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-mv3-prod
+          path: build/chrome-mv3-prod.zip
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: chrome-mv3-prod
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: chrome-mv3-prod.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
   build-and-release:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v3
+      
+      - name: Check system resources
+        run: |
+          echo "Disk space:"
+          df -h
+          echo "Memory:"
+          free -h
+          echo "Node version:"
+          node -v
+          echo "npm version:"
+          npm -v
       
       - name: Cache pnpm modules
         uses: actions/cache@v3
@@ -24,21 +82,33 @@ jobs:
             
       - uses: pnpm/action-setup@v2.2.4
         with:
-          version: latest
-          run_install: true
-          
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v3.4.1
-        with:
-          node-version: 20.x
-          cache: "pnpm"
-          
+          version: 8.6.12  # 指定稳定版本，避免使用 latest
+          run_install: false  # 关闭自动安装，改为手动执行
+      
+      - name: Verify pnpm installation
+        run: |
+          pnpm --version || echo "pnpm is not installed correctly"
+          which pnpm
+      
+      - name: Install dependencies
+        run: pnpm install
+      
       - name: Build the extension
         run: pnpm build
-        
+      
       - name: Package the extension
         run: pnpm package
-        
+      
+      - name: Verify build artifacts
+        run: |
+          ls -lah build/
+          if [ -f "build/chrome-mv3-prod.zip" ]; then
+            echo "Chrome extension package found!"
+          else
+            echo "ERROR: Chrome extension package not found!"
+            exit 1
+          fi
+      
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -59,4 +129,3 @@ jobs:
           asset_path: build/chrome-mv3-prod.zip
           asset_name: chrome-extension-${{ github.ref_name }}.zip
           asset_content_type: application/zip
-        
