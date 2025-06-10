@@ -91,6 +91,7 @@ export function splitFileNames(fileName: string): {
   isJs: boolean
   isCss: boolean
   isWorker: boolean
+  isUmdJs: boolean
 } {
   const fileNameArr = fileName.split(".")
   const name = fileNameArr?.shift()?.replace("*", "")
@@ -98,5 +99,6 @@ export function splitFileNames(fileName: string): {
   const isJs = type === "js"
   const isCss = type === "css"
   const isWorker = fileName.includes("worker") && isJs
-  return { name, type, isJs, isCss, isWorker }
+  const isUmdJs = isJs && !isWorker && fileNameArr?.slice(-2)?.includes("umd")
+  return { name, type, isJs, isCss, isWorker, isUmdJs }
 }

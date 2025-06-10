@@ -1,8 +1,70 @@
-import { SSEClient } from "~lib/sse-client"
-import { splitFileNames } from "~lib/utils"
 import { applyRules } from "~lib/rule-manager"
-import { executeScript, executeStyle } from "~lib/resource-injector"
-import type { Application } from "~types"
+import { SSEClient } from "~lib/sse-client"
+import type { Application, DevConfig } from "~types"
+
+import { injectedScript, injectedStyle } from "./injected-helper"
+
+interface ScriptMapping {
+  args: {
+    url: string
+    name: string
+    isWorker: boolean
+    isContent: boolean
+    isDev: boolean
+  }
+  func: typeof injectedScript | typeof injectedStyle
+}
+
+/**
+ * 生成脚本映射
+ * @param config
+ * @returns {ScriptMapping[]}
+ */
+function generateScriptMappings(config: DevConfig): ScriptMapping[] {
+  const { packageName, devUrl } = config
+  const args = {
+    name: packageName,
+    isWorker: false,
+    isContent: false,
+    isDev: true
+  }
+  const scriptMappings: ScriptMapping[] = [
+    {
+      args: { ...args, url: `${devUrl}/${packageName}.umd.js` },
+      func: injectedScript
+    },
+    {
+      args: { ...args, url: `${devUrl}/${packageName}.css` },
+      func: injectedStyle
+    },
+    {
+      args: {
+        ...args,
+        url: `${devUrl}/${packageName}.worker.js`,
+        isWorker: true
+      },
+      func: injectedScript
+    }
+  ]
+
+  return scriptMappings
+}
+
+/**
+ * 执行数据
+ * @param tabId    
+ * @param config 
+ */
+function executeData(tabId: number, config: DevConfig) {
+  generateScriptMappings(config).forEach(({ func, args }) => {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func,
+      args: [args]
+    })
+  })
+}
 
 export async function injectResource(
   tabId: number,
@@ -14,16 +76,13 @@ export async function injectResource(
   devConfigs.forEach(async (config) => {
     const { packageName, devUrl } = config
     applyRules(packageName, domains)
-    executeScript(tabId, [`${devUrl}/${packageName}.umd.js`, packageName], false, true)
-    executeStyle(tabId, [`${devUrl}/${packageName}.css`, packageName], false, false, true)
+    executeData(tabId, config)
 
     const sseClient = new SSEClient(`${devUrl}/sse`)
     sseClient.onMessage((data) => {
-      const { event, filePath } = data
+      const { event } = data
       if (event === "change") {
-        const { isJs, isCss } = splitFileNames(filePath)
-        if (isJs) executeScript(tabId, [`${devUrl}/${packageName}.umd.js`, packageName], false, true)
-        if (isCss) executeStyle(tabId, [`${devUrl}/${packageName}.css`, packageName], false, false, true)
+        executeData(tabId, config)
       }
     })
     sseClient.onError((error) => {

@@ -1,9 +1,9 @@
 import { APP_INIT, REPLACEMENT_UPDATED } from "~lib/constants"
-import { clearRedirectRules } from "~lib/rule-manager"
-import { extractDomainFromPattern, matchApp } from "~lib/utils"
+import { applyRules, clearRedirectRules } from "~lib/rule-manager"
+import { extractDomainFromPattern, matchApp, splitFileNames } from "~lib/utils"
 import type { Application, Package } from "~types"
 
-import { injectedCssHelper, injectedScriptHelper } from "./injected-helper"
+import { injectedScript, injectedStyle } from "./injected-helper"
 import { injectResource } from "./url-replacement-worker"
 
 chrome.runtime.onMessage.addListener((request, sender) => {
@@ -26,10 +26,32 @@ chrome.runtime.onMessage.addListener((request, sender) => {
  * @description 该函数通过 Chrome 扩展 API 查询当前活动标签页，并向其发送指定消息
  */
 function sendToPopup(message: any) {
-  chrome.runtime.sendMessage({
-    action: REPLACEMENT_UPDATED,
-    ...message
-  })
+  try {
+    chrome.runtime.sendMessage(
+      {
+        action: REPLACEMENT_UPDATED,
+        ...message
+      },
+      () => {
+        // 检查是否有运行时错误
+        if (chrome.runtime.lastError) {
+          // 忽略 "Receiving end does not exist" 错误，这通常发生在popup未打开时
+          if (
+            !chrome.runtime.lastError.message?.includes(
+              "Receiving end does not exist"
+            )
+          ) {
+            console.warn(
+              "发送消息到popup时出错:",
+              chrome.runtime.lastError.message
+            )
+          }
+        }
+      }
+    )
+  } catch (error) {
+    console.warn("发送消息到popup失败:", error)
+  }
 }
 
 /**
@@ -44,10 +66,10 @@ function sendToPopup(message: any) {
  * - 支持 JS 和 CSS 文件的重定向
  * - 规则仅应用于指定域名范围
  */
-function updateRedirectRules(tabId: number, app: Application) {
+async function updateRedirectRules(tabId: number, app: Application) {
   // 从匹配模式中提取域名部分，用于更精确的匹配
   const domains = app.urlPatterns.map(extractDomainFromPattern)
-
+  
   // 如果有开发配置
   if (app.devConfigs.length) injectResource(tabId, app, domains)
 
@@ -63,23 +85,30 @@ function updateRedirectRules(tabId: number, app: Application) {
   // 构建所有需要重定向的文件映射
   const scriptMappings: Record<string, ArrayBuffer> = {}
 
-  app.packages.forEach((pkg: Package) => {
-    const jsFileName = pkg.config.outputName + ".umd.js"
-    const cssFileName = pkg.config.outputName + ".css"
-    const wookerFileName = pkg.config.outputName + ".umd.worker.js"
-    if (pkg.files[jsFileName]) {
-      scriptMappings[`*${jsFileName}`] = pkg.files[jsFileName]
-    }
-    if (pkg.files[cssFileName]) {
-      scriptMappings[`*${cssFileName}`] = pkg.files[cssFileName]
-    }
-    if (pkg.files[wookerFileName]) {
-      scriptMappings[`*${wookerFileName}`] = pkg.files[wookerFileName]
-    }
-  })
+  // 等待所有包处理完成
+  await Promise.all(
+    app.packages.map(async (pkg: Package) => {
+      const jsFileName = pkg.config.outputName + ".umd.js"
+      const cssFileName = pkg.config.outputName + ".css"
+      const wookerFileName = pkg.config.outputName + ".umd.worker.js"
+
+      // 先应用拦截规则，阻止原始文件加载
+      await applyRules(pkg.config.outputName, domains)
+
+      if (pkg.files[jsFileName]) {
+        scriptMappings[`*${jsFileName}`] = pkg.files[jsFileName]
+      }
+      if (pkg.files[cssFileName]) {
+        scriptMappings[`*${cssFileName}`] = pkg.files[cssFileName]
+      }
+      if (pkg.files[wookerFileName]) {
+        scriptMappings[`*${wookerFileName}`] = pkg.files[wookerFileName]
+      }
+    })
+  )
 
   const files: string[] = []
-  // 将脚本映射传递给当前活动标签页
+  // 现在 scriptMappings 已经填充完成
   Object.entries(scriptMappings).forEach(([fileName, buffer]) => {
     injectScriptWithEval(tabId, fileName, buffer)
     files.push(fileName)
@@ -103,29 +132,25 @@ function injectScriptWithEval(
   const decoder = new TextDecoder("utf-8")
   const content = decoder.decode(buffer)
 
-  const fileNameArr = fileName?.split(".")
-  const name = fileNameArr?.shift()?.replace("*", "")
-  const type = fileNameArr?.pop()
-  const isJs = type === "js"
-  const isWorker = fileNameArr?.slice(-2)?.includes("worker")
-  const isCss = type === "css"
-  const isUmdJs = isJs && !isWorker && fileNameArr?.slice(-2)?.includes("umd")
+  const { isWorker, isCss, isUmdJs, name } = splitFileNames(fileName)
 
-  if (isUmdJs) {
+  // 注入 umd.js 和 worker.js
+  if (isUmdJs || isWorker) {
     chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
-      func: injectedScriptHelper,
-      args: [name, isWorker, content]
+      func: injectedScript,
+      args: [{ url: content, name, isWorker, isContent: true, isDev: false }]
     })
   }
 
+  // 注入 css
   if (isCss) {
     chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
-      func: injectedCssHelper,
-      args: [content]
+      func: injectedStyle,
+      args: [{ url: content, name, isContent: true, isDev: false }]
     })
   }
 }
