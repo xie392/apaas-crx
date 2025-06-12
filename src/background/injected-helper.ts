@@ -49,7 +49,7 @@ export async function injectedScript({
   scriptUrl = URL.createObjectURL(blob)
   const script = document.createElement("script")
   script.src = scriptUrl
-  script.id = `${name}-script`
+  script.id = isWorker ? `${name}-script-worker` : `${name}-script`
   document.body.appendChild(script)
 
   script.onload = () => {
