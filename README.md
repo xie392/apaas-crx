@@ -1,73 +1,77 @@
-# APaaS 脚本替换工具
 
-这是一个 Chrome 扩展，用于将网页中的 JS 或 CSS 链接替换成用户上传的自定义文件。主要应用于 APaaS 平台。
+## 项目概述
 
-## 功能特点
+**APaaS 脚本替换工具** 是一个Chrome浏览器扩展程序，主要用于在网页中动态替换JavaScript和CSS文件。这个工具特别适用于APaaS（应用程序平台即服务）平台的开发和测试场景。
 
-1. **多应用管理**：创建、编辑和删除多个替换应用
-2. **包文件上传**：每个应用可以上传多个包（压缩文件）
-3. **URL 匹配规则**：配置精确的 URL 匹配规则，决定何时触发替换
-4. **应用切换**：轻松启用/禁用应用
-5. **实时查看**：在 popup 中查看当前页面替换的脚本信息
+## 主要功能
 
-## 使用说明
+### 🎯 核心功能
+1. **脚本文件替换**：将网页中的原始JS/CSS文件替换为用户上传的自定义文件
+2. **多应用管理**：支持创建、编辑和删除多个替换应用配置
+3. **URL匹配规则**：通过配置URL模式来精确控制何时触发文件替换
+4. **包文件管理**：每个应用可以上传多个压缩包，包含不同的脚本文件
 
-### 安装扩展（开发模式）
+### 🔧 技术特点
+- **实时替换**：使用Chrome扩展的declarativeNetRequest API拦截网络请求
+- **动态注入**：通过scripting API将自定义脚本注入到页面中
+- **本地存储**：使用IndexedDB存储应用配置和文件数据
+- **开发模式支持**：支持开发环境下的实时文件替换
 
-1. 使用 `npm run dev` 或 `pnpm dev` 构建扩展
-2. 打开 Chrome，进入扩展管理页面 (`chrome://extensions/`)
-3. 启用"开发者模式"
-4. 点击"加载已解压的扩展程序"，选择项目中的 `build/chrome-mv3-dev` 目录
+## 使用场景
 
-### 配置应用
+### 典型应用场景：
+1. **前端开发调试**：在生产环境中测试本地开发的脚本
+2. **APaaS平台定制**：为APaaS平台注入自定义的业务逻辑
+3. **A/B测试**：在不同页面版本间快速切换
+4. **热修复**：临时修复生产环境中的脚本问题
 
-1. 点击扩展图标，然后点击"管理应用"进入选项页面
-2. 点击"创建新应用"按钮
-3. 填写应用名称和 URL 匹配规则（每行一个，支持通配符）
-4. 上传包文件（ZIP 格式）
-   - 包必须包含 `apaas.json` 文件，其中需要指定 `outputName` 字段
-   - 压缩包中的文件命名格式应为 `{outputName}.umd.js` 或 `{outputName}.css`
-5. 保存应用
+## 技术架构
 
-### 使用替换功能
-
-1. 访问满足 URL 匹配规则的网页
-2. 扩展会自动替换页面中的 JS/CSS 文件
-3. 点击扩展图标查看当前页面替换的脚本
-
-### 包文件格式
-
-上传的 ZIP 包必须包含以下内容：
-
-- `apaas.json` 文件，包含 `outputName` 字段
-- JS 文件（命名为 `{outputName}.umd.js`）
-- CSS 文件（命名为 `{outputName}.css`）
-
-例如，如果 `apaas.json` 中 `outputName` 为 "app"，则：
-- JS 文件应命名为 `app.umd.js`
-- CSS 文件应命名为 `app.css`
+<img src="./assets/1.png" alt="技术架构图" style="width:100%; display:block; margin:0 auto;">
 
 ## 技术栈
 
-- TypeScript
-- React
-- Tailwind CSS
-- shadcn UI
-- Plasmo 框架
-- IndexedDB 存储
+### 前端技术
+- **React 19** - 用户界面框架
+- **TypeScript** - 类型安全的JavaScript
+- **Tailwind CSS** - 样式框架
+- **shadcn/ui** - UI组件库
+- **Lucide React** - 图标库
 
-## 开发
+### 扩展开发
+- **Plasmo框架** - Chrome扩展开发框架
+- **Chrome Extension Manifest V3** - 最新的扩展清单版本
+- **Chrome APIs**：
+  - `declarativeNetRequest` - 网络请求拦截
+  - `scripting` - 脚本注入
+  - `storage` - 数据存储
+  - `tabs` - 标签页管理
 
-```bash
-# 安装依赖
-pnpm install
+### 数据存储
+- **IndexedDB** - 浏览器本地数据库
+- **idb-keyval** - IndexedDB的简化接口
 
-# 开发模式
-pnpm run dev
+## 工作流程
 
-# 构建扩展
-pnpm run build
+### 文件替换流程：
 
-# 打包扩展
-pnpm run package
-```
+<img src="./assets/2.png" alt="技术架构图" style="display:block; margin:0 auto;">
+
+## 项目特色
+
+### 🚀 优势特点
+1. **无侵入性**：不需要修改原网站代码，通过扩展实现文件替换
+2. **灵活配置**：支持复杂的URL匹配规则和多应用管理
+3. **开发友好**：支持开发模式，便于实时调试
+4. **安全可靠**：使用Chrome官方API，符合最新安全标准
+
+### 📦 文件格式要求
+上传的ZIP包必须包含：
+- `apaas.json` 配置文件（指定outputName）
+- `{outputName}.umd.js` JavaScript文件
+- `{outputName}.css` CSS文件（可选）
+- `{outputName}.umd.worker.js` Worker文件（可选）
+
+## 总结
+
+这是一个专业的Chrome扩展工具，主要服务于前端开发者和APaaS平台用户。它通过拦截和替换网页中的脚本文件，为开发调试、测试部署和平台定制提供了强大而灵活的解决方案。项目采用现代化的技术栈，代码结构清晰，功能完整，是一个高质量的浏览器扩展项目。
