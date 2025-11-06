@@ -1,7 +1,7 @@
 {
   "name": "apaas-crx",
   "displayName": "APaaS 脚本替换工具",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "APaaS 脚本替换工具，通过上传脚本文件，替换页面中的脚本",
   "author": "HongYu",
   "scripts": {
