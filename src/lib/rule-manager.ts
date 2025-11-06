@@ -64,6 +64,7 @@ export async function interceptRequest(
  * @returns Promise
  */
 export async function clearRedirectRules(): Promise<void> {
+  console.log(`%c清除所有动态重定向规则`, "color: #f00")
   return new Promise((resolve, reject) => {
     try {
       chrome.declarativeNetRequest.getDynamicRules((existingRules) => {

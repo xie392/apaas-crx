@@ -5,11 +5,9 @@ declare global {
 }
 
 interface injectedScriptOptions {
-  url: string
   name: string
   isWorker?: boolean
-  isContent?: boolean
-  isDev?: boolean
+  content: string
 }
 
 interface injectedStyleOptions
@@ -26,27 +24,17 @@ interface injectedStyleOptions
  * @returns {Promise<void>}
  */
 export async function injectedScript({
-  url,
+  content,
   name,
-  isWorker,
-  isContent,
-  isDev
+  isWorker
 }: injectedScriptOptions) {
   // 移除旧的脚本
   const oldScript = document.getElementById(`${name}-script`)
   if (oldScript) oldScript.remove()
 
-  let scriptUrl = url
-  let content = url
-
-  // 开发环境下总是需要获取内容
-  if (isDev && !isContent) {
-    content = await fetch(url).then((res) => res.text())
-  }
-
   // 创建新的脚本元素
   const blob = new Blob([content], { type: "text/javascript" })
-  scriptUrl = URL.createObjectURL(blob)
+  const scriptUrl = URL.createObjectURL(blob)
   const script = document.createElement("script")
   script.src = scriptUrl
   script.id = isWorker ? `${name}-script-worker` : `${name}-script`
@@ -72,26 +60,12 @@ export async function injectedScript({
  * @param {boolean}   injectedStyleOptions.isDev     是否为开发环境
  * @returns {Promise<void>}
  */
-export async function injectedStyle({
-  url,
-  name,
-  isContent,
-  isDev
-}: injectedStyleOptions) {
+export async function injectedStyle({ content, name }: injectedStyleOptions) {
   const oldStyle = document.getElementById(`${name}-style`)
   if (oldStyle) oldStyle.remove()
 
-  let styleUrl = url
-  let content = url
-
-  // 开发环境下总是需要获取内容
-  if (isDev && !isContent) {
-    content = await fetch(url).then((res) => res.text())
-    if (!content) return
-  }
-
   const blob = new Blob([content], { type: "text/css" })
-  styleUrl = URL.createObjectURL(blob)
+  const styleUrl = URL.createObjectURL(blob)
   const link = document.createElement("link")
   link.rel = "stylesheet"
   link.href = styleUrl

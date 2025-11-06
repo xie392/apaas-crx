@@ -69,7 +69,7 @@ function sendToPopup(message: any) {
 async function updateRedirectRules(tabId: number, app: Application) {
   // 从匹配模式中提取域名部分，用于更精确的匹配
   const domains = app.urlPatterns.map(extractDomainFromPattern)
-  
+
   // 如果有开发配置
   if (app.devConfigs.length) injectResource(tabId, app, domains)
 
@@ -140,7 +140,7 @@ function injectScriptWithEval(
       target: { tabId },
       world: "MAIN",
       func: injectedScript,
-      args: [{ url: content, name, isWorker, isContent: true, isDev: false }]
+      args: [{ content, name, isWorker }]
     })
   }
 
@@ -150,7 +150,7 @@ function injectScriptWithEval(
       target: { tabId },
       world: "MAIN",
       func: injectedStyle,
-      args: [{ url: content, name, isContent: true, isDev: false }]
+      args: [{ content, name }]
     })
   }
 }

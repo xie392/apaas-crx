@@ -6,13 +6,23 @@ import { injectedScript, injectedStyle } from "./injected-helper"
 
 interface ScriptMapping {
   args: {
-    url: string
     name: string
     isWorker: boolean
     isContent: boolean
     isDev: boolean
+    content: string
   }
   func: typeof injectedScript | typeof injectedStyle
+}
+
+/**
+ * 请求接口
+ * @param url
+ * @returns {Promise<any>}
+ */
+async function request(url: string): Promise<any> {
+  const response = await fetch(url)
+  return response.text()
 }
 
 /**
@@ -20,7 +30,9 @@ interface ScriptMapping {
  * @param config
  * @returns {ScriptMapping[]}
  */
-function generateScriptMappings(config: DevConfig): ScriptMapping[] {
+async function generateScriptMappings(
+  config: DevConfig
+): Promise<ScriptMapping[]> {
   const { packageName, devUrl } = config
   const args = {
     name: packageName,
@@ -28,35 +40,52 @@ function generateScriptMappings(config: DevConfig): ScriptMapping[] {
     isContent: false,
     isDev: true
   }
-  const scriptMappings: ScriptMapping[] = [
-    {
-      args: { ...args, url: `${devUrl}/${packageName}.umd.js` },
-      func: injectedScript
-    },
-    {
-      args: { ...args, url: `${devUrl}/${packageName}.css` },
-      func: injectedStyle
-    },
-    {
-      args: {
-        ...args,
-        url: `${devUrl}/${packageName}.worker.js`,
-        isWorker: true
-      },
-      func: injectedScript
-    }
-  ]
 
-  return scriptMappings
+  const js = `${devUrl}/${packageName}.umd.js`
+  const css = `${devUrl}/${packageName}.css`
+  const worker = `${devUrl}/${packageName}.worker.js`
+
+  // fix: 25.11.06 由于浏览器安全策略 CORS private adress，请求本地私有网络的内容都会跨域，所以迁移到使用 background 请求
+  return Promise.allSettled([request(js), request(css), request(worker)]).then(
+    ([jsResult, cssResult, workerResult]) => {
+      const scriptMappings: ScriptMapping[] = []
+
+      // JS 和 CSS 是必需的
+      if (jsResult.status === "fulfilled") {
+        scriptMappings.push({
+          args: { ...args, content: jsResult.value },
+          func: injectedScript
+        })
+      }
+
+      if (cssResult.status === "fulfilled") {
+        scriptMappings.push({
+          args: { ...args, content: cssResult.value },
+          func: injectedStyle
+        })
+      }
+
+      // Worker 是可选的
+      if (workerResult.status === "fulfilled") {
+        scriptMappings.push({
+          args: { ...args, content: workerResult.value, isWorker: true },
+          func: injectedScript
+        })
+      }
+
+      return scriptMappings
+    }
+  )
 }
 
 /**
  * 执行数据
- * @param tabId    
- * @param config 
+ * @param tabId
+ * @param config
  */
-function executeData(tabId: number, config: DevConfig) {
-  generateScriptMappings(config).forEach(({ func, args }) => {
+async function executeData(tabId: number, config: DevConfig) {
+  const scriptMappings = await generateScriptMappings(config)
+  scriptMappings.forEach(({ func, args }) => {
     chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
