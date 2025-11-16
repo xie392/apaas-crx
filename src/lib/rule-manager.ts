@@ -2,29 +2,45 @@
  * 生成重定向规则
  * @param scriptMappings 脚本映射关系
  * @param domains 适用的域名列表
- * @returns 生成的规则数组
+ * @returns 生成的规则
  */
-export function generateRules(
-  scriptMappings: Record<string, string>,
-  domains: string[] = []
-): chrome.declarativeNetRequest.Rule[] {
-  return Object.entries(scriptMappings).map(([fileName], index) => {
-    return {
-      id: index + 1, // 规则ID必须是正整数
-      priority: 1,
-      action: {
-        type: chrome.declarativeNetRequest.RuleActionType.BLOCK
-      },
-      condition: {
-        urlFilter: fileName,
-        domains,
-        resourceTypes: [
-          chrome.declarativeNetRequest.ResourceType.SCRIPT,
-          chrome.declarativeNetRequest.ResourceType.STYLESHEET
-        ]
+export function generateRedirectRules(
+  rulesNamme: string,
+  domain: string
+): chrome.declarativeNetRequest.Rule {
+  return {
+    id: Math.floor(Date.now() / 1000),
+    priority: 1,
+    action: {
+      type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+      redirect: {
+        transform: extractDomainFromPattern(domain)
       }
+    },
+    condition: {
+      urlFilter: `*${rulesNamme}*`,
     }
-  })
+  }
+}
+
+/**
+ * 生成拦截规则
+ * @param rulesNamme  规则名称
+ * @param domains 适用的域名列表
+ * @returns 生成的规则
+ */
+export function generateBlockRules(rulesNamme: string, domains: string[] = []): chrome.declarativeNetRequest.Rule {
+  return {
+    id: Math.floor(Date.now() / 1000),
+    priority: 1,
+    action: {
+      type: chrome.declarativeNetRequest.RuleActionType.BLOCK,
+    },
+    condition: {
+      urlFilter: `*${rulesNamme}*`,
+      domains
+    }
+  }
 }
 
 /**
@@ -93,25 +109,37 @@ export async function clearRedirectRules(): Promise<void> {
  * 应用规则到指定的包名和域名
  * @param outputName 输出名称
  * @param domains 适用的域名列表
+ * @param isBlock 是否是拦截规则
  */
 export async function applyRules(
   outputName: string,
-  domains: string[] = []
+  domains: string | string[],
+  isBlock: boolean = false
 ): Promise<void> {
   try {
-    const jsFileName = outputName + ".umd.js"
-    const cssFileName = outputName + ".css"
-    const wookerFileName = outputName + ".umd.worker.js"
-
-    const scriptMappings: Record<string, string> = {
-      [`*${jsFileName}`]: jsFileName,
-      [`*${cssFileName}`]: cssFileName,
-      [`*${wookerFileName}`]: wookerFileName
-    }
-
-    const rules = generateRules(scriptMappings, domains)
-    await interceptRequest(rules)
+    const rules = isBlock
+      ? generateBlockRules(outputName, domains as string[])
+      : generateRedirectRules(outputName, domains as string)
+    await interceptRequest([rules])
   } catch (error) {
     console.error("应用网络请求拦截规则失败:", error)
+  }
+}
+
+/**
+ * 提取域名
+ * @param url
+ * @returns {scheme: string, host: string, port: string}
+ */
+export function extractDomainFromPattern(pattern: string): {
+  scheme: string
+  host: string
+  port: string
+} {
+  const url = new URL(pattern)
+  return {
+    scheme: url.protocol.replace(':', ''),
+    host: url.hostname,
+    port: url.port
   }
 }

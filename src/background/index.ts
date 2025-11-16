@@ -6,19 +6,6 @@ import type { Application, Package } from "~types"
 import { injectedScript, injectedStyle } from "./injected-helper"
 import { injectResource } from "./url-replacement-worker"
 
-chrome.runtime.onMessage.addListener((request, sender) => {
-  if (request.action === APP_INIT) {
-    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-      matchApp(sender.url).then((apps) => {
-        if (apps.isPattern && apps.app && apps.app?.enabled) {
-          updateRedirectRules(tab.id, apps.app)
-        } else {
-          clearRedirectRules()
-        }
-      })
-    })
-  }
-})
 
 /**
  * 向 Chrome 扩展的弹出窗口发送消息
@@ -70,49 +57,30 @@ async function updateRedirectRules(tabId: number, app: Application) {
   // 从匹配模式中提取域名部分，用于更精确的匹配
   const domains = app.urlPatterns.map(extractDomainFromPattern)
 
-  // 如果有开发配置
-  if (app.devConfigs.length) injectResource(tabId, app, domains)
-
-  // 如果没有上传任何包
-  if (!app.packages.length) return
-
   // 如果功能被禁用，清除所有规则
   if (!app.enabled || !app) {
     clearRedirectRules()
     return
   }
 
-  // 构建所有需要重定向的文件映射
-  const scriptMappings: Record<string, ArrayBuffer> = {}
+  // 如果有开发配置
+  if (app.devConfigs.length) injectResource(app)
 
-  // 等待所有包处理完成
-  await Promise.all(
-    app.packages.map(async (pkg: Package) => {
-      const jsFileName = pkg.config.outputName + ".umd.js"
-      const cssFileName = pkg.config.outputName + ".css"
-      const wookerFileName = pkg.config.outputName + ".umd.worker.js"
+  // 如果没有上传任何包
+  if (!app.packages.length) return
 
-      // 先应用拦截规则，阻止原始文件加载
-      await applyRules(pkg.config.outputName, domains)
-
-      if (pkg.files[jsFileName]) {
-        scriptMappings[`*${jsFileName}`] = pkg.files[jsFileName]
-      }
-      if (pkg.files[cssFileName]) {
-        scriptMappings[`*${cssFileName}`] = pkg.files[cssFileName]
-      }
-      if (pkg.files[wookerFileName]) {
-        scriptMappings[`*${wookerFileName}`] = pkg.files[wookerFileName]
-      }
-    })
-  )
-
+  // 处理压缩包
   const files: string[] = []
-  // 现在 scriptMappings 已经填充完成
-  Object.entries(scriptMappings).forEach(([fileName, buffer]) => {
-    injectScriptWithEval(tabId, fileName, buffer)
-    files.push(fileName)
-  })
+
+  console.log("app.packages", app.packages)
+
+  // app.packages.forEach(async (pkg: Package) => {
+  // await applyRules(pkg.config.outputName, domains, true)
+  // Object.entries(pkg.files).forEach(([fileName, buffer]) => {
+  //   injectScriptWithEval(tabId, fileName, buffer)
+  //   files.push(fileName)
+  // })
+  // })
 
   // 发送消息给 Popup
   sendToPopup({ files })
@@ -154,3 +122,21 @@ function injectScriptWithEval(
     })
   }
 }
+
+function main() {
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === APP_INIT) {
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+        matchApp(tab.url).then((apps) => {
+          if (apps.isPattern && apps.app && apps.app?.enabled) {
+            updateRedirectRules(tab.id, apps.app)
+          } else {
+            clearRedirectRules()
+          }
+        })
+      })
+    }
+  })
+}
+
+main()

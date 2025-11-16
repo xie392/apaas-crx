@@ -31,16 +31,20 @@ export const processZipFile = async (file: File): Promise<Package | null> => {
     const files: Record<string, ArrayBuffer> = {}
     const promises: Promise<void>[] = []
 
+
     contents.forEach((path, fileEntry) => {
       if (!fileEntry.dir) {
+
+        // console.log("处理zip包中的所有文件", path, fileEntry)
         const type = fileEntry.name?.split(".").pop()
-        const name = fileEntry.name?.split(".").shift()
-        if (["js", "css"].includes(type) && name === config.outputName) {
-          const promise = fileEntry.async("arraybuffer").then((buffer) => {
-            files[path] = buffer
-          })
-          promises.push(promise)
-        }
+        // const name = fileEntry.name?.split(".").shift()
+        // && name === config.outputName
+        // if (["js", "css"].includes(type)) {
+        const promise = fileEntry.async("arraybuffer").then((buffer) => {
+          files[path] = buffer
+        })
+        promises.push(promise)
+        // }
       }
     })
 

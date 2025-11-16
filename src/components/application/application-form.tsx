@@ -356,7 +356,7 @@ const DevConfigForm: React.FC<DevConfigFormProps> = ({
           <input
             type="text"
             value={packageName}
-            onChange={(e) => setPackageName(e.target.value)}
+            onChange={(e) => setPackageName(e.target.value.trim())}
             placeholder="例如: apaas-custom-test"
             className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary"
             disabled={isUploading}
@@ -369,7 +369,7 @@ const DevConfigForm: React.FC<DevConfigFormProps> = ({
           <input
             type="text"
             value={devUrl}
-            onChange={(e) => setDevUrl(e.target.value)}
+            onChange={(e) => setDevUrl(e.target.value.trim())}
             placeholder="例如: http://127.0.0.1:3000"
             className="tw-w-full tw-p-2 tw-border tw-rounded tw-focus:outline-none tw-focus:ring-2 tw-focus:ring-primary"
             disabled={isUploading}

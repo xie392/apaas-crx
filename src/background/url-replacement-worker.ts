@@ -96,26 +96,25 @@ async function executeData(tabId: number, config: DevConfig) {
 }
 
 export async function injectResource(
-  tabId: number,
   app: Application,
-  domains: string[] = []
+  // tabId: number,
+  // domains: string[] = []
 ) {
   const devConfigs = app.devConfigs
 
   devConfigs.forEach(async (config) => {
     const { packageName, devUrl } = config
-    applyRules(packageName, domains)
-    executeData(tabId, config)
-
-    const sseClient = new SSEClient(`${devUrl}/sse`)
-    sseClient.onMessage((data) => {
-      const { event } = data
-      if (event === "change") {
-        executeData(tabId, config)
-      }
-    })
-    sseClient.onError((error) => {
-      console.error(`【SSE错误 (${packageName})】：`, error)
-    })
+    applyRules(packageName, devUrl)
+    // executeData(tabId, config)
+    // const sseClient = new SSEClient(`${devUrl}/sse`)
+    // sseClient.onMessage((data) => {
+    //   const { event } = data
+    //   if (event === "change") {
+    //     executeData(tabId, config)
+    //   }
+    // })
+    // sseClient.onError((error) => {
+    //   console.error(`【SSE错误 (${packageName})】：`, error)
+    // })
   })
 }
