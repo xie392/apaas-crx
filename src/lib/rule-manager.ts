@@ -18,7 +18,7 @@ export function generateRedirectRules(
       }
     },
     condition: {
-      urlFilter: `*${rulesNamme}*`,
+      urlFilter: `*${rulesNamme}*`
     }
   }
 }
@@ -29,12 +29,15 @@ export function generateRedirectRules(
  * @param domains 适用的域名列表
  * @returns 生成的规则
  */
-export function generateBlockRules(rulesNamme: string, domains: string[] = []): chrome.declarativeNetRequest.Rule {
+export function generateBlockRules(
+  rulesNamme: string,
+  domains: string[] = []
+): chrome.declarativeNetRequest.Rule {
   return {
     id: Math.floor(Date.now() / 1000),
     priority: 1,
     action: {
-      type: chrome.declarativeNetRequest.RuleActionType.BLOCK,
+      type: chrome.declarativeNetRequest.RuleActionType.BLOCK
     },
     condition: {
       urlFilter: `*${rulesNamme}*`,
@@ -64,6 +67,10 @@ export async function interceptRequest(
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError)
             } else {
+              console.log(
+                `%c已启用脚本替换功能, 替换 url：${rules.map((v) => v.action.redirect).toString()}`,
+                "color: #f00"
+              )
               resolve()
             }
           }
@@ -138,7 +145,7 @@ export function extractDomainFromPattern(pattern: string): {
 } {
   const url = new URL(pattern)
   return {
-    scheme: url.protocol.replace(':', ''),
+    scheme: url.protocol.replace(":", ""),
     host: url.hostname,
     port: url.port
   }

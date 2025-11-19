@@ -1,11 +1,10 @@
-import { APP_INIT, REPLACEMENT_UPDATED } from "~lib/constants"
+import { APP_INIT, GET_FILE_LIST, REPLACEMENT_UPDATED } from "~lib/constants"
 import { applyRules, clearRedirectRules } from "~lib/rule-manager"
 import { extractDomainFromPattern, matchApp, splitFileNames } from "~lib/utils"
 import type { Application, Package } from "~types"
 
 import { injectedScript, injectedStyle } from "./injected-helper"
 import { injectResource } from "./url-replacement-worker"
-
 
 /**
  * 向 Chrome 扩展的弹出窗口发送消息
@@ -74,6 +73,8 @@ async function updateRedirectRules(tabId: number, app: Application) {
 
   console.log("app.packages", app.packages)
 
+  chrome.runtime.sendMessage({ action: GET_FILE_LIST, data: app.packages })
+
   // app.packages.forEach(async (pkg: Package) => {
   // await applyRules(pkg.config.outputName, domains, true)
   // Object.entries(pkg.files).forEach(([fileName, buffer]) => {
@@ -125,6 +126,7 @@ function injectScriptWithEval(
 
 function main() {
   chrome.runtime.onMessage.addListener((request) => {
+    // 初始化
     if (request.action === APP_INIT) {
       chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         matchApp(tab.url).then((apps) => {
@@ -135,6 +137,11 @@ function main() {
           }
         })
       })
+    } 
+
+    // 等待文件 blob
+    if (request.action === GET_FILE_LIST) {
+      console.log("GET_FILE_LIST", request.data)
     }
   })
 }

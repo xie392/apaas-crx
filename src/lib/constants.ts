@@ -3,3 +3,5 @@ export const REPLACEMENTS_STORAGE_KEY = "apaas-replacements"
 export const APP_INIT = "APP_INIT"
 export const REPLACEMENT_UPDATED = "REPLACEMENT_UPDATED"
 
+export const GET_FILE_LIST = "GET_FILE_LIST"
+
