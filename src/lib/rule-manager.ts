@@ -24,6 +24,39 @@ export function generateRedirectRules(
 }
 
 /**
+ * 生成 Data URL 重定向规则
+ * @param urlPattern 要匹配的 URL 模式（文件路径）
+ * @param dataUrl 重定向到的 Data URL
+ * @param ruleId 规则 ID
+ * @returns 生成的规则
+ */
+export function generateDataUrlRedirectRule(
+  rulesNamme: string,
+  domain: string,
+  ruleId: number
+): chrome.declarativeNetRequest.Rule {
+  return {
+    id: ruleId,
+    priority: 1,
+    action: {
+      type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
+      redirect: {
+        url: domain
+      }
+    },
+    condition: {
+      urlFilter: `*${rulesNamme}*`,
+      resourceTypes: [
+        chrome.declarativeNetRequest.ResourceType.SCRIPT,
+        chrome.declarativeNetRequest.ResourceType.STYLESHEET,
+        chrome.declarativeNetRequest.ResourceType.IMAGE,
+        chrome.declarativeNetRequest.ResourceType.FONT
+      ]
+    }
+  }
+}
+
+/**
  * 生成拦截规则
  * @param rulesNamme  规则名称
  * @param domains 适用的域名列表
@@ -67,10 +100,6 @@ export async function interceptRequest(
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError)
             } else {
-              console.log(
-                `%c已启用脚本替换功能, 替换 url：${rules.map((v) => v.action.redirect).toString()}`,
-                "color: #f00"
-              )
               resolve()
             }
           }
@@ -120,16 +149,41 @@ export async function clearRedirectRules(): Promise<void> {
  */
 export async function applyRules(
   outputName: string,
-  domains: string | string[],
-  isBlock: boolean = false
+  domains: string
 ): Promise<void> {
   try {
-    const rules = isBlock
-      ? generateBlockRules(outputName, domains as string[])
-      : generateRedirectRules(outputName, domains as string)
-    await interceptRequest([rules])
+    const rules = generateRedirectRules(outputName, domains)
+    return await interceptRequest([generateRedirectRules(outputName, domains)])
   } catch (error) {
     console.error("应用网络请求拦截规则失败:", error)
+    return error
+  }
+}
+
+/**
+ * 应用 Data URL 重定向规则
+ * @param dataUrls 文件路径到 Data URL 的映射
+ */
+export async function applyDataUrlRedirectRules(
+  packageName: string,
+  dataUrls: Record<string, string>
+): Promise<void> {
+  try {
+    const rules: chrome.declarativeNetRequest.Rule[] = []
+    let ruleId = Math.floor(Date.now() / 1000)
+
+    // 为每个文件创建重定向规则
+    for (const [path, dataUrl] of Object.entries(dataUrls)) {
+      rules.push(
+        generateDataUrlRedirectRule(`${packageName}/${path}`, dataUrl, ruleId++)
+      )
+    }
+
+    console.log(`创建 ${rules.length} 条重定向规则`, rules)
+    await interceptRequest(rules)
+  } catch (error) {
+    console.error("应用网络请求拦截规则失败:", error)
+    throw error
   }
 }
 

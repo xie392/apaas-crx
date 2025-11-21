@@ -1,10 +1,54 @@
 import { APP_INIT, GET_FILE_LIST, REPLACEMENT_UPDATED } from "~lib/constants"
-import { applyRules, clearRedirectRules } from "~lib/rule-manager"
+import {
+  applyDataUrlRedirectRules,
+  applyRules,
+  clearRedirectRules
+} from "~lib/rule-manager"
 import { extractDomainFromPattern, matchApp, splitFileNames } from "~lib/utils"
 import type { Application, Package } from "~types"
 
-import { injectedScript, injectedStyle } from "./injected-helper"
+// import { injectedScript, injectedStyle } from "./injected-helper"
 import { injectResource } from "./url-replacement-worker"
+
+/**
+ * 根据文件路径获取 MIME 类型
+ */
+function getMimeType(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase()
+  const mimeTypes: Record<string, string> = {
+    js: "application/javascript",
+    css: "text/css",
+    json: "application/json",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    webp: "image/webp",
+    ico: "image/x-icon",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ttf: "font/ttf",
+    eot: "application/vnd.ms-fontobject"
+  }
+  return mimeTypes[ext || ""] || "application/octet-stream"
+}
+
+/**
+ * 将 ArrayBuffer 转换为 Data URL
+ */
+function arrayBufferToDataUrl(
+  arrayBuffer: ArrayBuffer,
+  mimeType: string
+): string {
+  const uint8Array = new Uint8Array(arrayBuffer)
+  let binary = ""
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i])
+  }
+  const base64 = btoa(binary)
+  return `data:${mimeType};base64,${base64}`
+}
 
 /**
  * 向 Chrome 扩展的弹出窗口发送消息
@@ -63,65 +107,26 @@ async function updateRedirectRules(tabId: number, app: Application) {
   }
 
   // 如果有开发配置
-  if (app.devConfigs.length) injectResource(app)
+  if (app.devConfigs.length) injectResource(tabId, app)
 
   // 如果没有上传任何包
   if (!app.packages.length) return
 
-  // 处理压缩包
-  const files: string[] = []
+  // 处理压缩包 - 将 ArrayBuffer 转为 Data URL
+  const dataUrls: Record<string, string> = {}
 
-  console.log("app.packages", app.packages)
-
-  chrome.runtime.sendMessage({ action: GET_FILE_LIST, data: app.packages })
-
-  // app.packages.forEach(async (pkg: Package) => {
-  // await applyRules(pkg.config.outputName, domains, true)
-  // Object.entries(pkg.files).forEach(([fileName, buffer]) => {
-  //   injectScriptWithEval(tabId, fileName, buffer)
-  //   files.push(fileName)
-  // })
-  // })
+  // 将 ArrayBuffer 转为 Data URL
+  for (const pkg of app.packages) {
+    for (const [path, arrayBuffer] of Object.entries(pkg.files)) {
+      const mimeType = getMimeType(path)
+      dataUrls[path] = arrayBufferToDataUrl(arrayBuffer, mimeType)
+    }
+  }
+  // 发送 data URLs 到 content script 进行注入
+  chrome.tabs.sendMessage(tabId, { action: GET_FILE_LIST, data: dataUrls })
 
   // 发送消息给 Popup
-  sendToPopup({ files })
-}
-
-/**
- * 使用 eval 动态注入脚本到页面中
- * @param tabId - 当前标签页 ID
- * @param fileName - 脚本文件名
- * @param buffer - 脚本内容的 ArrayBuffer
- */
-function injectScriptWithEval(
-  tabId: number,
-  fileName: string,
-  buffer: ArrayBuffer
-) {
-  const decoder = new TextDecoder("utf-8")
-  const content = decoder.decode(buffer)
-
-  const { isWorker, isCss, isUmdJs, name } = splitFileNames(fileName)
-
-  // 注入 umd.js 和 worker.js
-  if (isUmdJs || isWorker) {
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func: injectedScript,
-      args: [{ content, name, isWorker }]
-    })
-  }
-
-  // 注入 css
-  if (isCss) {
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func: injectedStyle,
-      args: [{ content, name }]
-    })
-  }
+  sendToPopup({ files: Object.keys(dataUrls) })
 }
 
 function main() {
@@ -137,11 +142,6 @@ function main() {
           }
         })
       })
-    } 
-
-    // 等待文件 blob
-    if (request.action === GET_FILE_LIST) {
-      console.log("GET_FILE_LIST", request.data)
     }
   })
 }

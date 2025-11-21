@@ -1,4 +1,8 @@
-import { applyRules } from "~lib/rule-manager"
+import {
+  applyRules,
+  generateRedirectRules,
+  interceptRequest
+} from "~lib/rule-manager"
 import { SSEClient } from "~lib/sse-client"
 import type { Application, DevConfig } from "~types"
 
@@ -96,15 +100,30 @@ async function executeData(tabId: number, config: DevConfig) {
 }
 
 export async function injectResource(
-  app: Application,
-  // tabId: number,
+  tabId: number,
+  app: Application
+
   // domains: string[] = []
 ) {
   const devConfigs = app.devConfigs
 
   devConfigs.forEach(async (config) => {
     const { packageName, devUrl } = config
-    applyRules(packageName, devUrl)
+    // applyRules(packageName, devUrl)
+    const rule = generateRedirectRules(packageName, devUrl)
+    await interceptRequest([rule]).then(() => {
+      chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: (packageName) => {
+          console.info(
+            `%c【APaaS扩展】: ${packageName} 已更新`,
+            "color: #007bff"
+          )
+        },
+        args: [packageName]
+      })
+    })
     // executeData(tabId, config)
     // const sseClient = new SSEClient(`${devUrl}/sse`)
     // sseClient.onMessage((data) => {
