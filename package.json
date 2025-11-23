@@ -54,6 +54,7 @@
       "scripting",
       "tabs",
       "webNavigation",
+      "webRequest",
       "activeTab",
       "declarativeNetRequest",
       "declarativeNetRequestWithHostAccess",

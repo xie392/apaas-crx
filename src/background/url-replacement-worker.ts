@@ -109,7 +109,6 @@ export async function injectResource(
 
   devConfigs.forEach(async (config) => {
     const { packageName, devUrl } = config
-    // applyRules(packageName, devUrl)
     const rule = generateRedirectRules(packageName, devUrl)
     await interceptRequest([rule]).then(() => {
       chrome.scripting.executeScript({

@@ -15,7 +15,19 @@ export function generateRedirectRules(
       type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
       redirect: {
         transform: extractDomainFromPattern(domain)
-      }
+      },
+      responseHeaders: [
+        {
+          header: "Access-Control-Allow-Origin",
+          operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+          value: "*"
+        },
+        {
+          header: "Access-Control-Allow-Methods",
+          operation: chrome.declarativeNetRequest.HeaderOperation.SET,
+          value: "GET, POST, PUT, DELETE, OPTIONS"
+        }
+      ]
     },
     condition: {
       urlFilter: `*${rulesNamme}*`
@@ -64,16 +76,17 @@ export function generateDataUrlRedirectRule(
  */
 export function generateBlockRules(
   rulesNamme: string,
-  domains: string[] = []
+  domains: string[] = [],
+  ruleId?: number
 ): chrome.declarativeNetRequest.Rule {
   return {
-    id: Math.floor(Date.now() / 1000),
+    id: ruleId ?? Math.floor(Date.now() / 1000),
     priority: 1,
     action: {
       type: chrome.declarativeNetRequest.RuleActionType.BLOCK
     },
     condition: {
-      urlFilter: `*${rulesNamme}*`,
+      urlFilter: `*${rulesNamme}`,
       domains
     }
   }

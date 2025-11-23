@@ -2,7 +2,9 @@ import { APP_INIT, GET_FILE_LIST, REPLACEMENT_UPDATED } from "~lib/constants"
 import {
   applyDataUrlRedirectRules,
   applyRules,
-  clearRedirectRules
+  clearRedirectRules,
+  generateBlockRules,
+  interceptRequest
 } from "~lib/rule-manager"
 import { extractDomainFromPattern, matchApp, splitFileNames } from "~lib/utils"
 import type { Application, Package } from "~types"
@@ -98,7 +100,6 @@ function sendToPopup(message: any) {
  */
 async function updateRedirectRules(tabId: number, app: Application) {
   // 从匹配模式中提取域名部分，用于更精确的匹配
-  const domains = app.urlPatterns.map(extractDomainFromPattern)
 
   // 如果功能被禁用，清除所有规则
   if (!app.enabled || !app) {
@@ -113,20 +114,50 @@ async function updateRedirectRules(tabId: number, app: Application) {
   if (!app.packages.length) return
 
   // 处理压缩包 - 将 ArrayBuffer 转为 Data URL
-  const dataUrls: Record<string, string> = {}
+  // const dataUrls: Record<string, string> = {}
 
-  // 将 ArrayBuffer 转为 Data URL
+  const domains = app.urlPatterns.map(extractDomainFromPattern)
+  const rules: chrome.declarativeNetRequest.Rule[] = []
+  let ruleId = 1
+  const files: Record<string, ArrayBuffer> = {}
+  // // 将 ArrayBuffer 转为 Data URL
   for (const pkg of app.packages) {
     for (const [path, arrayBuffer] of Object.entries(pkg.files)) {
-      const mimeType = getMimeType(path)
-      dataUrls[path] = arrayBufferToDataUrl(arrayBuffer, mimeType)
+      const rule = generateBlockRules(path, domains, ruleId++)
+      rules.push(rule)
+      files[path] = arrayBuffer
+      //   const mimeType = getMimeType(path)
+      //   dataUrls[path] = arrayBufferToDataUrl(arrayBuffer, mimeType)
     }
   }
-  // 发送 data URLs 到 content script 进行注入
-  chrome.tabs.sendMessage(tabId, { action: GET_FILE_LIST, data: dataUrls })
+  await interceptRequest(rules)
 
-  // 发送消息给 Popup
-  sendToPopup({ files: Object.keys(dataUrls) })
+  chrome.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      if (!app.enabled || !app) return {}
+
+      const rule = rules.find((r) =>
+        details.url.includes(r.condition.urlFilter.replace("*", ""))
+      )
+
+      if (rule) {
+        const path = rule.condition.urlFilter.replace("*", "")
+        console.log("details", app, files[path], app.urlPatterns)
+      }
+
+      return {}
+    },
+    {
+      // urls: ["<all_urls>"]
+      urls: app.urlPatterns
+    } 
+  )
+
+  // // 发送 data URLs 到 content script 进行注入
+  // chrome.tabs.sendMessage(tabId, { action: GET_FILE_LIST, data: dataUrls })
+
+  // // 发送消息给 Popup
+  // sendToPopup({ files: Object.keys(dataUrls) })
 }
 
 function main() {
