@@ -102,3 +102,7 @@ export function splitFileNames(fileName: string): {
   const isUmdJs = isJs && !isWorker && fileNameArr?.slice(-2)?.includes("umd")
   return { name, type, isJs, isCss, isWorker, isUmdJs }
 }
+
+export function getFileSuffix(filePath: string) {
+  return filePath?.split(".")?.pop()
+}

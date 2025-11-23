@@ -6,9 +6,15 @@ import {
   generateBlockRules,
   interceptRequest
 } from "~lib/rule-manager"
-import { extractDomainFromPattern, matchApp, splitFileNames } from "~lib/utils"
+import {
+  extractDomainFromPattern,
+  getFileSuffix,
+  matchApp,
+  splitFileNames
+} from "~lib/utils"
 import type { Application, Package } from "~types"
 
+import { injected, injectedScript, injectedStyle } from "./injected-helper"
 // import { injectedScript, injectedStyle } from "./injected-helper"
 import { injectResource } from "./url-replacement-worker"
 
@@ -126,38 +132,78 @@ async function updateRedirectRules(tabId: number, app: Application) {
       const rule = generateBlockRules(path, domains, ruleId++)
       rules.push(rule)
       files[path] = arrayBuffer
+      // injectScriptWithEval(tabId, path, files[path])
       //   const mimeType = getMimeType(path)
       //   dataUrls[path] = arrayBufferToDataUrl(arrayBuffer, mimeType)
     }
   }
   await interceptRequest(rules)
 
-  chrome.webRequest.onBeforeRequest.addListener(
-    (details) => {
-      if (!app.enabled || !app) return {}
+  // chrome.webRequest.onBeforeRequest.addListener(
+  //   (details) => {
+  //     if (!app.enabled || !app) return {}
 
-      const rule = rules.find((r) =>
-        details.url.includes(r.condition.urlFilter.replace("*", ""))
-      )
+  //     const rule = rules.find((r) =>
+  //       details.url.includes(r.condition.urlFilter.replace("*", ""))
+  //     )
 
-      if (rule) {
-        const path = rule.condition.urlFilter.replace("*", "")
-        console.log("details", app, files[path], app.urlPatterns)
-      }
+  //     if (rule) {
+  //       const path = rule.condition.urlFilter.replace("*", "")
+  //       injectScriptWithEval(details.tabId, path, files[path])
+  //     }
 
-      return {}
-    },
-    {
-      // urls: ["<all_urls>"]
-      urls: app.urlPatterns
-    } 
-  )
+  //     return {}
+  //   },
+  //   {
+  //     // urls: ["<all_urls>"]
+  //     urls: app.urlPatterns
+  //   }
+  // )
 
   // // 发送 data URLs 到 content script 进行注入
   // chrome.tabs.sendMessage(tabId, { action: GET_FILE_LIST, data: dataUrls })
 
   // // 发送消息给 Popup
   // sendToPopup({ files: Object.keys(dataUrls) })
+}
+
+/**
+ * 使用 eval 动态注入脚本到页面中
+ * @param tabId - 当前标签页 ID
+ * @param fileName - 脚本文件名
+ * @param buffer - 脚本内容的 ArrayBuffer
+ */
+function injectScriptWithEval(
+  tabId: number,
+  fileName: string,
+  buffer: ArrayBuffer
+) {
+  const decoder = new TextDecoder("utf-8")
+  const content = decoder.decode(buffer)
+
+  // const isJs = getFileSuffix(fileName)
+  // const isCss = getFileSuffix(fileName)
+  // const { isWorker, isCss, isUmdJs, name } = splitFileNames(fileName)
+
+  // 注入 umd.js 和 worker.js
+  // if (isJs) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: injected,
+    args: [{ content, name: fileName }]
+  })
+  // }
+
+  // 注入 css
+  // if (isCss) {
+  //   chrome.scripting.executeScript({
+  //     target: { tabId },
+  //     world: "MAIN",
+  //     func: injectedStyle,
+  //     args: [{ content, name }]
+  //   })
+  // }
 }
 
 function main() {
