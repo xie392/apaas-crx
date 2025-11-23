@@ -1,112 +1,33 @@
+import { generateRedirectRules, interceptRequest } from "~lib/rule-manager"
+import { splitFileNames } from "~lib/utils"
+import type { Application } from "~types"
+
 declare global {
   interface Window {
     vue: any
   }
 }
 
-interface injectedScriptOptions {
+interface InjectedScriptOptions {
   name: string
-  isWorker?: boolean
   content: string
 }
 
-interface injectedStyleOptions
-  extends Omit<injectedScriptOptions, "isWorker"> {}
-
-export async function injected({ content, name }: injectedScriptOptions) {
-  // 如果已经注入过了就不需要继续注入
-  const el = document.getElementById(`injected-${name}`)
-  if (el) return
-
-  console.log("injected:", name)
-
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeName === "SCRIPT") {
-          const script = node as HTMLScriptElement
-          console.log("script injected:", script.src, name)
-          if (script.src.includes(name)) {
-            const blob = new Blob([content], { type: "text/javascript" })
-            const scriptUrl = URL.createObjectURL(blob)
-            script.src = scriptUrl
-            script.id = `injected-${name}`
-            console.log(`🔄 将脚本 ${script.src} 替换为 ${scriptUrl}`)
-            observer.disconnect()
-          }
-        }
-
-        console.log("node.nodeName", node)
-
-        if (node.nodeName === "STYLE") {
-          const style = node as HTMLLinkElement
-          console.log(style.href)
-          // if (style.h) {
-          //   const blob = new Blob([content], { type: "text/javascript" })
-          //   const scriptUrl = URL.createObjectURL(blob)
-          //   script.src = scriptUrl
-          //   script.id = `injected-${name}`
-          //   console.log(`🔄 将脚本 ${script.src} 替换为 ${scriptUrl}`)
-          //   observer.disconnect()
-          // }
-        }
-      })
-    })
-  })
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  })
-
-  window.addEventListener("load", () => {
-    observer.disconnect()
-  })
+interface InjectedStyleOptions {
+  name: string
+  content: string
 }
 
 /**
  * 插入脚本到页面
- * @param {injectedScriptOptions} injectedScriptOptions
- * @param {string}    injectedScriptOptions.url       脚本URL或内容
- * @param {string}    injectedScriptOptions.name      包名称
- * @param {boolean}   injectedScriptOptions.isWorker  是否为Web Worker脚本
- * @param {boolean}   injectedScriptOptions.isContent 是否直接传入内容而非URL
- * @param {boolean}   injectedScriptOptions.isDev     是否为开发环境
- * @returns {Promise<void>}
+ * @param options - 脚本配置选项
+ * @param options.content - 脚本内容
+ * @param options.name - 包名称
  */
 export async function injectedScript({
   content,
   name
-  // isWorker
-}: injectedScriptOptions) {
-  // 创建一个 MutationObserver 实例
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      // 遍历所有被添加的节点
-      mutation.addedNodes.forEach((node) => {
-        // 检查节点是否是一个 <script> 标签，并且具有 src 属性
-        if (node.nodeName === "SCRIPT") {
-          const script = node as HTMLScriptElement
-
-          if (script.src.includes(name)) {
-            const blob = new Blob([content], { type: "text/javascript" })
-            const scriptUrl = URL.createObjectURL(blob)
-            script.src = scriptUrl
-            console.log(`🔄 将脚本 ${script.src} 替换为 ${scriptUrl}`)
-            observer.disconnect()
-          }
-        }
-      })
-    })
-  })
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  })
-  window.addEventListener("load", () => {
-    observer.disconnect()
-  })
+}: InjectedScriptOptions): Promise<void> {
   // 移除旧的脚本
   const oldScript = document.getElementById(`${name}-script`)
   if (oldScript) oldScript.remove()
@@ -116,30 +37,29 @@ export async function injectedScript({
   const scriptUrl = URL.createObjectURL(blob)
   const script = document.createElement("script")
   script.src = scriptUrl
-  // script.id = isWorker ? `${name}-script-worker` : `${name}-script`
+  script.id = `${name}-script`
   document.body.appendChild(script)
-
-  // script.onload = () => {
-  //   const plugin = window[name]
-  //   if (window?.vue && plugin) {
-  //     // 手动安装插件
-  //     // TODO: 开发模式下热更新
-  //     plugin?.default?.install(window.vue)
-  //     console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
-  //   }
-  // }
+  script.onload = () => {
+    const plugin = window[name]
+    if (window?.vue && plugin) {
+      // 手动安装插件
+      // TODO: 开发模式下热更新
+      plugin?.default?.install(window.vue)
+      console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
+    }
+  }
 }
 
 /**
  * 插入样式到页面
- * @param {injectedStyleOptions} injectedStyleOptions
- * @param {string}    injectedStyleOptions.url       脚本URL或内容
- * @param {string}    injectedStyleOptions.name      包名称
- * @param {boolean}   injectedStyleOptions.isContent 是否直接传入内容而非URL
- * @param {boolean}   injectedStyleOptions.isDev     是否为开发环境
- * @returns {Promise<void>}
+ * @param options - 样式配置选项
+ * @param options.content - 样式内容
+ * @param options.name - 包名称
  */
-export async function injectedStyle({ content, name }: injectedStyleOptions) {
+export async function injectedStyle({
+  content,
+  name
+}: InjectedStyleOptions): Promise<void> {
   const oldStyle = document.getElementById(`${name}-style`)
   if (oldStyle) oldStyle.remove()
 
@@ -152,4 +72,71 @@ export async function injectedStyle({ content, name }: injectedStyleOptions) {
   document.head.appendChild(link)
 
   console.info(`%c【APaaS扩展】: ${name} 样式已更新`, "color: #28a745")
+}
+
+/**
+ * 使用 eval 动态注入脚本到页面中
+ * @param tabId - 当前标签页 ID
+ * @param fileName - 脚本文件名
+ * @param buffer - 脚本内容的 ArrayBuffer
+ */
+export function injectScriptWithEval(
+  tabId: number,
+  fileName: string,
+  buffer: ArrayBuffer
+) {
+  const decoder = new TextDecoder("utf-8")
+  const content = decoder.decode(buffer)
+  const { isCss, isUmdJs, name } = splitFileNames(fileName)
+
+  // 注入 umd.js 和 worker.js
+  if (isUmdJs) {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: injectedScript,
+      args: [{ content, name }]
+    })
+  }
+
+  // 注入 css
+  if (isCss) {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: injectedStyle,
+      args: [{ content, name }]
+    })
+  }
+}
+
+/**
+ * 注入开发环境资源
+ * @param tabId 标签页ID
+ * @param app 应用配置
+ */
+export async function injectResource(
+  tabId: number,
+  app: Application
+): Promise<void> {
+  const devConfigs = app.devConfigs
+
+  devConfigs.forEach(async (config) => {
+    const { packageName, devUrl } = config
+    const rule = generateRedirectRules(packageName, devUrl)
+    await interceptRequest([rule]).then(() => {
+      chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: (packageName) => {
+          console.info(
+            `%c【APaaS扩展】: ${packageName} 已更新`,
+            "color: #007bff"
+          )
+        },
+        args: [packageName]
+      })
+      // sse 链接
+    })
+  })
 }

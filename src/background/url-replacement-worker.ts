@@ -1,138 +1,102 @@
+import { REPLACEMENT_UPDATED } from "~lib/constants"
 import {
-  applyRules,
-  generateRedirectRules,
+  clearRedirectRules,
+  generateBlockRules,
   interceptRequest
 } from "~lib/rule-manager"
-import { SSEClient } from "~lib/sse-client"
-import type { Application, DevConfig } from "~types"
+import type { Application, Package } from "~types"
 
-import { injectedScript, injectedStyle } from "./injected-helper"
+import { injectResource, injectScriptWithEval } from "./injected-helper"
+import { extractDomainFromPattern } from "~lib/utils"
 
-interface ScriptMapping {
-  args: {
-    name: string
-    isWorker: boolean
-    isContent: boolean
-    isDev: boolean
-    content: string
+/**
+ * 向 Chrome 扩展的弹出窗口发送消息
+ * @param message 要发送的消息内容
+ * @description 该函数通过 Chrome 扩展 API 查询当前活动标签页，并向其发送指定消息
+ */
+function sendToPopup(message: any) {
+  try {
+    chrome.runtime.sendMessage(
+      {
+        action: REPLACEMENT_UPDATED,
+        ...message
+      },
+      () => {
+        // 检查是否有运行时错误
+        if (chrome.runtime.lastError) {
+          // 忽略 "Receiving end does not exist" 错误，这通常发生在popup未打开时
+          if (
+            !chrome.runtime.lastError.message?.includes(
+              "Receiving end does not exist"
+            )
+          ) {
+            console.warn(
+              "发送消息到popup时出错:",
+              chrome.runtime.lastError.message
+            )
+          }
+        }
+      }
+    )
+  } catch (error) {
+    console.warn("发送消息到popup失败:", error)
   }
-  func: typeof injectedScript | typeof injectedStyle
 }
 
 /**
- * 请求接口
- * @param url
- * @returns {Promise<any>}
+ * 更新 Chrome 扩展的重定向规则
+ *
+ * @param app Application 对象，包含应用配置信息
+ * @description
+ * 该函数根据应用配置更新 Chrome 扩展的动态重定向规则：
+ * - 如果应用没有上传包，则直接返回
+ * - 如果功能被禁用，清除所有现有规则
+ * - 根据配置的 URL 模式和包文件创建新的重定向规则
+ * - 支持 JS 和 CSS 文件的重定向
+ * - 规则仅应用于指定域名范围
  */
-async function request(url: string): Promise<any> {
-  const response = await fetch(url)
-  return response.text()
-}
-
-/**
- * 生成脚本映射
- * @param config
- * @returns {ScriptMapping[]}
- */
-async function generateScriptMappings(
-  config: DevConfig
-): Promise<ScriptMapping[]> {
-  const { packageName, devUrl } = config
-  const args = {
-    name: packageName,
-    isWorker: false,
-    isContent: false,
-    isDev: true
+export async function updateRedirectRules(tabId: number, app: Application) {
+  // 如果功能被禁用，清除所有规则
+  if (!app.enabled || !app) {
+    clearRedirectRules()
+    return
   }
 
-  const js = `${devUrl}/${packageName}.umd.js`
-  const css = `${devUrl}/${packageName}.css`
-  const worker = `${devUrl}/${packageName}.worker.js`
+  // 如果有开发配置
+  if (app.devConfigs.length) injectResource(tabId, app)
 
-  // fix: 25.11.06 由于浏览器安全策略 CORS private adress，请求本地私有网络的内容都会跨域，所以迁移到使用 background 请求
-  return Promise.allSettled([request(js), request(css), request(worker)]).then(
-    ([jsResult, cssResult, workerResult]) => {
-      const scriptMappings: ScriptMapping[] = []
+  // 如果没有上传任何包
+  if (!app.packages.length) return
 
-      // JS 和 CSS 是必需的
-      if (jsResult.status === "fulfilled") {
-        scriptMappings.push({
-          args: { ...args, content: jsResult.value },
-          func: injectedScript
-        })
-      }
+  // 构建所有需要重定向的文件映射
+  const scriptMappings: Record<string, ArrayBuffer> = {}
+  const domains = app.urlPatterns.map(extractDomainFromPattern)
+  const rules: chrome.declarativeNetRequest.Rule[] = []
+  let ruleId = 1
 
-      if (cssResult.status === "fulfilled") {
-        scriptMappings.push({
-          args: { ...args, content: cssResult.value },
-          func: injectedStyle
-        })
-      }
+  // 等待所有包处理完成
+  const promise = app.packages.map(async (pkg: Package) => {
+    const jsFileName = pkg.config.outputName + ".umd.js"
+    const cssFileName = pkg.config.outputName + ".css"
 
-      // Worker 是可选的
-      if (workerResult.status === "fulfilled") {
-        scriptMappings.push({
-          args: { ...args, content: workerResult.value, isWorker: true },
-          func: injectedScript
-        })
-      }
+    scriptMappings[jsFileName] = pkg.files[jsFileName]
+    scriptMappings[cssFileName] = pkg.files[cssFileName]
 
-      return scriptMappings
-    }
-  )
-}
-
-/**
- * 执行数据
- * @param tabId
- * @param config
- */
-async function executeData(tabId: number, config: DevConfig) {
-  const scriptMappings = await generateScriptMappings(config)
-  scriptMappings.forEach(({ func, args }) => {
-    chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func,
-      args: [args]
-    })
+    const jsRule = generateBlockRules(jsFileName, domains, ruleId++)
+    const cssRule = generateBlockRules(cssFileName, domains, ruleId++)
+    rules.push(jsRule, cssRule)
   })
-}
 
-export async function injectResource(
-  tabId: number,
-  app: Application
+  await Promise.all(promise)
+  await interceptRequest(rules)
 
-  // domains: string[] = []
-) {
-  const devConfigs = app.devConfigs
-
-  devConfigs.forEach(async (config) => {
-    const { packageName, devUrl } = config
-    const rule = generateRedirectRules(packageName, devUrl)
-    await interceptRequest([rule]).then(() => {
-      chrome.scripting.executeScript({
-        target: { tabId },
-        world: "MAIN",
-        func: (packageName) => {
-          console.info(
-            `%c【APaaS扩展】: ${packageName} 已更新`,
-            "color: #007bff"
-          )
-        },
-        args: [packageName]
-      })
-    })
-    // executeData(tabId, config)
-    // const sseClient = new SSEClient(`${devUrl}/sse`)
-    // sseClient.onMessage((data) => {
-    //   const { event } = data
-    //   if (event === "change") {
-    //     executeData(tabId, config)
-    //   }
-    // })
-    // sseClient.onError((error) => {
-    //   console.error(`【SSE错误 (${packageName})】：`, error)
-    // })
+  const files: string[] = []
+  // 现在 scriptMappings 已经填充完成
+  Object.entries(scriptMappings).forEach(([fileName, buffer]) => {
+    injectScriptWithEval(tabId, fileName, buffer)
+    files.push(fileName)
   })
+
+  // 发送消息给 Popup
+  sendToPopup({ files })
 }

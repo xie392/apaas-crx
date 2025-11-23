@@ -19,7 +19,6 @@ export const getApps = async (): Promise<Application[]> => {
     const apps = await get(APPS_STORAGE_KEY)
 
     if (!apps) {
-      console.log("未找到应用数据，返回空数组")
       return []
     }
 

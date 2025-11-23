@@ -81,9 +81,9 @@ export async function matchApp(
 }
 
 /**
- * 分割文件名
+ * 分割文件名并返回文件信息
  * @param fileName 文件名
- * @returns 文件名、文件类型、是否是js、是否是css、是否是worker
+ * @returns 包含文件名、类型和各种标识的对象
  */
 export function splitFileNames(fileName: string): {
   name: string
@@ -101,8 +101,4 @@ export function splitFileNames(fileName: string): {
   const isWorker = fileName.includes("worker") && isJs
   const isUmdJs = isJs && !isWorker && fileNameArr?.slice(-2)?.includes("umd")
   return { name, type, isJs, isCss, isWorker, isUmdJs }
-}
-
-export function getFileSuffix(filePath: string) {
-  return filePath?.split(".")?.pop()
 }
