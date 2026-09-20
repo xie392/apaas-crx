@@ -43,8 +43,19 @@ export async function injectedScript({
     const plugin = window[name]
     if (window?.vue && plugin) {
       // 手动安装插件
-      // TODO: 开发模式下热更新
       plugin?.default?.install(window.vue)
+      // 组件重注册后强制已渲染的组件树重渲染，保留实例状态
+      const roots = new Set<any>()
+      document.body.querySelectorAll("*").forEach((el: any) => {
+        if (el.__vue__?.$root) roots.add(el.__vue__.$root)
+      })
+      roots.forEach((root) => {
+        const walk = (vm: any) => {
+          vm.$forceUpdate()
+          vm.$children.forEach(walk)
+        }
+        walk(root)
+      })
       console.info(`%c【APaaS扩展】: ${name} 已更新`, "color: #007bff")
     }
   }
@@ -139,4 +150,30 @@ export async function injectResource(
       // sse 链接
     })
   })
+}
+
+/**
+ * 热更新：重新拉取开发服务器上的产物并注入（不刷新页面）
+ * @param tabId 标签页ID
+ * @param devConfig 开发配置
+ */
+export async function reinjectDevResource(
+  tabId: number,
+  devConfig: { packageName: string; devUrl: string }
+): Promise<void> {
+  const { packageName, devUrl } = devConfig
+  const files = [`${packageName}.umd.js`, `${packageName}.css`]
+
+  await Promise.all(
+    files.map(async (fileName) => {
+      try {
+        const res = await fetch(`${devUrl}/${fileName}`)
+        if (!res.ok) return
+        const buffer = await res.arrayBuffer()
+        injectScriptWithEval(tabId, fileName, buffer)
+      } catch (e) {
+        console.warn(`【APaaS扩展】拉取 ${fileName} 失败:`, e)
+      }
+    })
+  )
 }

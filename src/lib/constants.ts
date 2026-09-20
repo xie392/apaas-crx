@@ -2,4 +2,5 @@ export const APPS_STORAGE_KEY = "apaas-apps"
 export const REPLACEMENTS_STORAGE_KEY = "apaas-replacements"
 export const APP_INIT = "APP_INIT"
 export const REPLACEMENT_UPDATED = "REPLACEMENT_UPDATED"
-
+export const GET_DEV_CONFIGS = "GET_DEV_CONFIGS"
+export const DEV_FILE_CHANGED = "DEV_FILE_CHANGED"
