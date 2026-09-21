@@ -46,6 +46,7 @@ function startBuild({ argv, apaasConfig, entryPath }) {
         PUBLIC_ENTRY: entryPath,
       },
       detached: process.platform !== "win32",
+      shell: process.platform === "win32",
     }
   )
 

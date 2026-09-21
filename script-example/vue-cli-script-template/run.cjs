@@ -50,6 +50,7 @@ function startBuild({ argv, apaasConfig, entryPath, staticDir }) {
     ],
     {
       detached: process.platform !== "win32",
+      shell: process.platform === "win32",
     }
   )
 

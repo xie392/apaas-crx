@@ -18,9 +18,9 @@
 
 ## 插件原理
 
-**一句话总结：**页面本来要加载官方服务器上的代码文件，插件偷偷把它换成你电脑上的；你一保存代码，本地立刻重新打包，插件收到"改好了"的信号，就把页面里那份旧代码扔掉、换上新的，让页面重画一遍，全程不用刷新。
+一句话总结：页面本来要加载官方服务器上的代码文件，插件偷偷把它换成你电脑上的；你一保存代码，本地立刻重新打包，插件收到"改好了"的信号，就把页面里那份旧代码扔掉、换上新的，让页面重画一遍，全程不用刷新。
 
-**代价：**界面会整体重画一遍（一般看不出来），大部分改动都能生效；但如果改动涉及"新增/删除组件"这种大动作，还是得手动刷新一次页面才保险。
+代价：界面会整体重画一遍（一般看不出来），大部分改动都能生效；但如果改动涉及"新增/删除组件"这种大动作，还是得手动刷新一次页面才保险。
 
 ### **完整链路的原理：**
 
@@ -71,11 +71,11 @@ content script 发 `DEV_FILE_CHANGED` 消息给 background，background 重新 f
 
 按项目构建工具选择，完整脚本见 [`script-example/`](./script-example/) 目录，将 `lib/` 公共模块 + 所选模板一起复制到业务项目的 `scripts/` 即可使用：
 
-| 模板 | 适用项目 | 打包命令 |
-|------|----------|----------|
-| [`script-example/rsbuild-monorepo-script-template/`](./script-example/rsbuild-monorepo-script-template/) | rslib monorepo 工程（模块位于 `apps/<模块名>/`，如 apaas-custom-crm-web） | `rslib build -w` |
-| [`script-example/rsbuild-script-template/`](./script-example/rsbuild-script-template/) | rslib 单仓工程（模块位于 `src/custom/<模块名>/`，如 apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode） | `rslib build -w` |
-| [`script-example/vue-cli-script-template/`](./script-example/vue-cli-script-template/) | 未迁移的 vue-cli 旧工程（如 apaas-custom-technicalreview） | `vue-cli-service build --target lib --watch` |
+| 模板                                                                                                       | 适用项目                                                                                                 | 打包命令                                         |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| [`script-example/rsbuild-monorepo-script-template/`](./script-example/rsbuild-monorepo-script-template/) | rslib monorepo 工程（模块位于 `apps/<模块名>/`，如 apaas-custom-crm-web）                                         | `rslib build -w`                             |
+| [`script-example/rsbuild-script-template/`](./script-example/rsbuild-script-template/)                   | rslib 单仓工程（模块位于 `src/custom/<模块名>/`，如 apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode） | `rslib build -w`                             |
+| [`script-example/vue-cli-script-template/`](./script-example/vue-cli-script-template/)                   | 未迁移的 vue-cli 旧工程（如 apaas-custom-technicalreview）                                                     | `vue-cli-service build --target lib --watch` |
 
 三个模板共用公共模块 [`lib/`](./script-example/lib/)（日志 / 端口探测 / 静态服务 + SSE / 300ms 防抖监听），各自只保留两个差异点：apaas.json 解析路径和打包命令。rsbuild 模板还注入 `NODE_ENV=development`（buildCache 生效、跳过压缩），热更新重建更快。详细用法见 [`script-example/README.md`](./script-example/README.md)。
 
@@ -88,6 +88,8 @@ pnpm add -D express@^5.1.0 cors@^2.8.5 chokidar@^4.0.3 chalk@^4.1.2 get-port@^7.
 ```
 
 版本说明：
+
 - **chalk 必须用 v4**：v5 起改为 ESM-only，CJS 脚本 `require("chalk")` 会直接报错
 - **get-port 用 v7**：ESM-only 包，脚本内已用动态 `import()` 加载，无需额外处理
 - **express v5**：如项目里已有 express v4 也可用 v4，脚本未用到 v5 独有 API
+
