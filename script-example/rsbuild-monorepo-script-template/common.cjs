@@ -1,23 +1,8 @@
 const fs = require("fs");
 const path = require("path");
-const chalk = require("chalk");
 
-// 日志工具
-const log = {
-  info: (msg) => console.log(chalk.cyan(`【信息】${msg}`)),
-  success: (msg) => console.log(chalk.green(`【成功】${msg}`)),
-  error: (msg) => console.error(chalk.red(`【错误】${msg}`)),
-  warning: (msg) => console.warn(chalk.yellow(`【警告】${msg}`)),
-};
-
-// 路径处理辅助函数
-const resolvePath = (...args) => path.resolve(process.cwd(), ...args);
-
-// 错误处理函数
-const exitWithError = (message) => {
-  log.error(message);
-  process.exit(0);
-};
+// 日志/路径/错误处理复用公共模块
+const { log, resolvePath, exitWithError } = require("../lib/utils.cjs");
 
 // 加载并验证配置
 function loadApaasConfig(customModule, apaasJson = 'apaas.json') {

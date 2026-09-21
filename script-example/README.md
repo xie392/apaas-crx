@@ -8,7 +8,8 @@
 script-example/
 ├── lib/                                    # 公共模块（三个模板共用）
 │   ├── utils.cjs                           #   日志 / 路径 / 错误处理
-│   └── hot-server.cjs                      #   端口探测 / 静态服务+SSE / 防抖产物监听
+│   ├── hot-server.cjs                      #   get-port 端口探测 / 静态服务+SSE / 防抖产物监听
+│   └── build-utils.cjs                     #   输出清理 / 资源拷贝 / 体积告警 / 打 ZIP
 ├── rsbuild-monorepo-script-template/       # rslib monorepo（如 apaas-custom-crm-web）
 │   ├── run.cjs                             #   热更新开发服务（薄壳：路径解析 + 构建命令）
 │   ├── common.cjs                          #   配置加载 / 参数提取 / 构建命令
@@ -49,7 +50,7 @@ node scripts/build.js <模块名>       # 单次构建打 ZIP
 node scripts/run.cjs <模块名>        # 热更新开发服务
 ```
 
-依赖：`express`、`cors`、`chokidar`、`chalk`、`get-port`；含 `build` 脚本的模板另需 `shelljs`、`zip-local`。
+依赖：`express`、`cors`、`chokidar`、`chalk`、`get-port`、`shelljs`、`zip-local`。
 
 ## 注意事项
 
