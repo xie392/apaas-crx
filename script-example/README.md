@@ -49,7 +49,7 @@ node scripts/build.js <模块名>       # 单次构建打 ZIP
 node scripts/run.cjs <模块名>        # 热更新开发服务
 ```
 
-依赖：`express`、`cors`、`chokidar`、`chalk`；含 `build` 脚本的模板另需 `shelljs`、`zip-local`。
+依赖：`express`、`cors`、`chokidar`、`chalk`、`get-port`；含 `build` 脚本的模板另需 `shelljs`、`zip-local`。
 
 ## 注意事项
 

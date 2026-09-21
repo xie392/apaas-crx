@@ -1,35 +1,11 @@
 const express = require("express")
 const cors = require("cors")
 const chokidar = require("chokidar")
-const net = require("net")
 const { log } = require("./utils.cjs")
 
 // 配置相关常量
 const DEFAULT_PORT = 3000
 const PORT_RANGE = { from: 3000, to: 3100 }
-
-// 端口被占用时依次向后尝试
-function findAvailablePort(startPort) {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer()
-    server.unref()
-    server.on("error", (err) => {
-      if (err.code === "EADDRINUSE") {
-        if (startPort < PORT_RANGE.to) {
-          resolve(findAvailablePort(startPort + 1))
-        } else {
-          reject(new Error("端口范围内无可用端口"))
-        }
-      } else {
-        reject(err)
-      }
-    })
-    server.listen(startPort, "127.0.0.1", () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 /**
  * 启动热更新静态资源服务（CORS + 静态托管 + SSE 端点）
@@ -63,7 +39,16 @@ async function startHotServer({ staticDir, extraPrefixes = [] }) {
     log.info("新的SSE客户端连接")
   })
 
-  const port = await findAvailablePort(DEFAULT_PORT)
+  // get-port 为 ESM-only 包，需动态导入；依赖业务项目安装 get-port
+  const { default: getPort } = await import("get-port")
+  // 不传 host，让 get-port 校验所有本地地址（含 IPv6 通配 :: 与 0.0.0.0），
+  // 避免限定 host 时占用端口监听在 :: 而被误判可用（macOS dual-stack 场景）
+  const port = await getPort({
+    port: Array.from(
+      { length: PORT_RANGE.to - PORT_RANGE.from + 1 },
+      (_, i) => PORT_RANGE.from + i,
+    ),
+  })
   await new Promise((resolve) => app.listen(port, "127.0.0.1", resolve))
 
   log.success(`静态资源服务器启动: http://127.0.0.1:${port}/`)
@@ -125,4 +110,4 @@ function watchBuildOutput({ staticDir, clients }) {
   return watcher
 }
 
-module.exports = { DEFAULT_PORT, findAvailablePort, startHotServer, watchBuildOutput }
+module.exports = { DEFAULT_PORT, startHotServer, watchBuildOutput }
