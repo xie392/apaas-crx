@@ -10,7 +10,8 @@ const { spawn } = require("child_process")
 
 const { log, exitWithError } = require("../lib/utils.cjs")
 const { startHotServer, watchBuildOutput } = require("../lib/hot-server.cjs")
-const { loadApaasConfig, validateEntry, buildRslibCommand, extractCustomArgs } = require("./common.cjs")
+const { loadApaasConfig, validateEntry } = require("./common.cjs")
+const { buildRslibCommand, extractCustomArgs } = require("../lib/rsbuild.cjs")
 
 // ---- 差异点 1：解析路径 ----
 function resolveContext() {

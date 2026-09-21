@@ -6,7 +6,8 @@
  */
 const { log, exitWithError, resolvePath } = require("../lib/utils.cjs")
 const { cleanPath, copyConfigAndAssets, reportJsSize, makeZip } = require("../lib/build-utils.cjs")
-const { loadApaasConfig, validateEntry, buildRslibCommand, extractCustomArgs } = require("./common.cjs")
+const { loadApaasConfig, validateEntry } = require("./common.cjs")
+const { buildRslibCommand, extractCustomArgs } = require("../lib/rsbuild.cjs")
 
 async function build() {
   const [, , customModule, ...argv] = process.argv

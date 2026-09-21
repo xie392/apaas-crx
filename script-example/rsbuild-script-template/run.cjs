@@ -10,6 +10,7 @@ const { spawn } = require("child_process")
 
 const { log, exitWithError } = require("../lib/utils.cjs")
 const { startHotServer, watchBuildOutput } = require("../lib/hot-server.cjs")
+const { buildRslibCommand } = require("../lib/rsbuild.cjs")
 
 // ---- 差异点 1：解析路径 ----
 function resolveContext() {
@@ -35,7 +36,7 @@ function resolveContext() {
 function startBuild({ argv, apaasConfig, entryPath }) {
   const buildProcess = spawn(
     "npx",
-    ["rslib", "build", "-w", ...argv],
+    buildRslibCommand(path.dirname(entryPath), argv, true),
     {
       env: {
         ...process.env,
