@@ -16,6 +16,8 @@ export interface Package {
 export interface DevConfig {
   packageName: string
   devUrl: string
+  auto?: boolean
+  env?: Record<string, string>
 }
 
 export interface Application {

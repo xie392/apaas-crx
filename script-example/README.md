@@ -10,7 +10,8 @@ script-example/
 │   ├── utils.cjs                           #   日志 / 路径 / 错误处理
 │   ├── hot-server.cjs                      #   get-port 端口探测 / 静态服务+SSE / 防抖产物监听
 │   ├── rsbuild.cjs                         #   参数提取 / rslib 命令拼装
-│   └── build-utils.cjs                     #   输出清理 / 资源拷贝 / 体积告警 / 打 ZIP
+│   ├── build-utils.cjs                     #   输出清理 / 资源拷贝 / 体积告警 / 打 ZIP
+│   └── dev-registry.cjs                    #   本地注册中心（9876 端口），插件自动注入开发配置的数据源
 ├── rsbuild-monorepo-script-template/       # rslib monorepo（如 apaas-custom-crm-web）
 │   ├── run.cjs                             #   热更新开发服务（薄壳：路径解析 + 构建命令）
 │   ├── common.cjs                          #   差异点 1：apps/<模块名>/apaas.json 解析
@@ -64,8 +65,27 @@ pnpm add -D express@^5.1.0 cors@^2.8.5 chokidar@^4.0.3 chalk@^4.1.2 get-port@^7.
 - **get-port 用 v7**：ESM-only 包，脚本内已用动态 `import()` 加载，无需额外处理
 - **express v5**：如项目里已有 express v4 也可用 v4，脚本未用到 v5 独有 API
 
+## 自动注入开发配置
+
+`run.cjs` 启动后会把 `outputName + devUrl` 注册到本地注册中心（`http://127.0.0.1:9876`，由第一个启动的进程创建，多开互不冲突），插件每 30 秒拉取一次并自动写入对应应用的"开发配置"；进程退出（含 Ctrl+C / kill -9）后自动移除。
+
+在业务项目根目录创建 `.env.local`（可选）：
+
+```
+# 指定注入到哪个应用（推荐，二选一）
+DEV_APP_ID=<插件编辑页"应用 ID"栏复制的值>
+DEV_APP_NAME=<插件中的应用名称>
+
+# 或按域名匹配应用的 URL 规则
+DEV_TARGET_HOST=https://crm-fw.app.yuchai.com
+
+# 其他 KEY=VALUE 会随注册上报，存入插件的 devConfig.env
+```
+
+若不配置且插件内只有一个应用，则直接注入到该应用。
+
 ## 注意事项
 
-- 端口如果不是 3000，插件 devUrl 需对应修改
+- 端口 3000~3100 自动探测，devUrl 随实际端口自动注册，无需手动维护
 - 模块路径与项目结构不一致时，改 `run.cjs` 里的 `resolveContext()`（差异点 1）
 - `build` 脚本只构建一次、用于打上传包；热更新场景请使用 `run.cjs`

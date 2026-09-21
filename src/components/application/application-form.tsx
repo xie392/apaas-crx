@@ -72,6 +72,7 @@ interface BasicInfoFormProps {
   urlPatterns: string
   setUrlPatterns: (patterns: string) => void
   isUploading: boolean
+  appId?: string
 }
 
 const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
@@ -79,7 +80,8 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
   setName,
   urlPatterns,
   setUrlPatterns,
-  isUploading
+  isUploading,
+  appId
 }) => {
   return (
     <>
@@ -96,6 +98,26 @@ const BasicInfoForm: React.FC<BasicInfoFormProps> = ({
           disabled={isUploading}
         />
       </div>
+
+      {appId && (
+        <div>
+          <label className="tw-block tw-text-sm tw-font-medium tw-mb-1">
+            应用 ID <span className="tw-text-gray-400 tw-font-normal">（填入项目 .env.local 的 DEV_APP_ID，用于自动注入开发配置）</span>
+          </label>
+          <div className="tw-flex tw-items-center tw-gap-2">
+            <code className="tw-flex-1 tw-px-2 tw-py-1.5 tw-bg-gray-50 tw-border tw-rounded tw-text-xs tw-font-mono tw-text-gray-600 tw-truncate">
+              {appId}
+            </code>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(appId)}
+              className="tw-px-3 tw-py-1.5 tw-border tw-rounded tw-text-xs tw-whitespace-nowrap hover:tw-bg-gray-100"
+            >
+              复制
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="tw-block tw-text-sm tw-font-medium tw-mb-1">
@@ -597,6 +619,7 @@ export const ApplicationForm: React.FC<ApplicationFormProps> = ({
         urlPatterns={urlPatterns}
         setUrlPatterns={setUrlPatterns}
         isUploading={isUploading}
+        appId={app?.id}
       />
 
       <DevConfigForm

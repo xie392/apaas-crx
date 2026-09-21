@@ -2,6 +2,7 @@ import { APP_INIT, DEV_FILE_CHANGED, GET_DEV_CONFIGS } from "~lib/constants"
 import { clearRedirectRules } from "~lib/rule-manager"
 import { matchApp } from "~lib/utils"
 import { reinjectDevResource } from "./injected-helper"
+import { startDevRegistrySync } from "./dev-registry-sync"
 import { updateRedirectRules } from "./url-replacement-worker"
 
 function main() {
@@ -40,3 +41,4 @@ function main() {
 }
 
 main()
+startDevRegistrySync()
