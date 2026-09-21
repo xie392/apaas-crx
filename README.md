@@ -73,7 +73,8 @@ content script 发 `DEV_FILE_CHANGED` 消息给 background，background 重新 f
 
 | 目录 | 适用项目 | 构建工具 | 说明 |
 |------|----------|----------|------|
-| [`script-example/new-template/`](./script-example/new-template/) | 已迁移 rslib 的新模板（apaas-custom-crm-web、apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode 等） | rslib | `common.cjs` + `run.cjs`（热更新服务）+ `build.cjs`（打 ZIP 上传包） |
-| [`script-example/old-template/`](./script-example/old-template/) | 未迁移的旧模板（apaas-custom-technicalreview 等） | vue-cli-service | `run.cjs`（热更新服务，`vue-cli-service build --target lib --watch`） |
+| [`script-example/rsbuild-monorepo-script-template/`](./script-example/rsbuild-monorepo-script-template/) | rslib monorepo 工程（模块位于 `apps/<模块名>/`，如 apaas-custom-crm-web） | rslib | `common.cjs` + `run.cjs`（热更新服务）+ `build.cjs`（打 ZIP 上传包） |
+| [`script-example/rsbuild-script-template/`](./script-example/rsbuild-script-template/) | rslib 单仓工程（模块位于 `src/custom/<模块名>/`，如 apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode） | rslib | `server.js`（热更新服务）+ `build.js`（打 ZIP 上传包） |
+| [`script-example/vue-cli-script-template/`](./script-example/vue-cli-script-template/) | 未迁移的 vue-cli 旧工程（如 apaas-custom-technicalreview） | vue-cli-service | `run.cjs`（热更新服务） |
 
 两个模板功能一致：静态资源服务（3000~3100 自动探测端口）+ `/sse` 变更通知 + 300ms 防抖合并推送；新模板额外做了 `NODE_ENV=development` 优化（buildCache 生效、跳过压缩），热更新重建更快。详细用法见 [`script-example/README.md`](./script-example/README.md)。
