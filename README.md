@@ -69,12 +69,12 @@ content script 发 `DEV_FILE_CHANGED` 消息给 background，background 重新 f
 
 ### 5. 本地服务脚本参考实现
 
-按项目构建工具选择，完整脚本见 [`script-example/`](./script-example/) 目录，复制到业务项目的 `scripts/` 即可使用：
+按项目构建工具选择，完整脚本见 [`script-example/`](./script-example/) 目录，将 `lib/` 公共模块 + 所选模板一起复制到业务项目的 `scripts/` 即可使用：
 
-| 目录 | 适用项目 | 构建工具 | 说明 |
-|------|----------|----------|------|
-| [`script-example/rsbuild-monorepo-script-template/`](./script-example/rsbuild-monorepo-script-template/) | rslib monorepo 工程（模块位于 `apps/<模块名>/`，如 apaas-custom-crm-web） | rslib | `common.cjs` + `run.cjs`（热更新服务）+ `build.cjs`（打 ZIP 上传包） |
-| [`script-example/rsbuild-script-template/`](./script-example/rsbuild-script-template/) | rslib 单仓工程（模块位于 `src/custom/<模块名>/`，如 apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode） | rslib | `server.js`（热更新服务）+ `build.js`（打 ZIP 上传包） |
-| [`script-example/vue-cli-script-template/`](./script-example/vue-cli-script-template/) | 未迁移的 vue-cli 旧工程（如 apaas-custom-technicalreview） | vue-cli-service | `run.cjs`（热更新服务） |
+| 模板 | 适用项目 | 打包命令 |
+|------|----------|----------|
+| [`script-example/rsbuild-monorepo-script-template/`](./script-example/rsbuild-monorepo-script-template/) | rslib monorepo 工程（模块位于 `apps/<模块名>/`，如 apaas-custom-crm-web） | `rslib build -w` |
+| [`script-example/rsbuild-script-template/`](./script-example/rsbuild-script-template/) | rslib 单仓工程（模块位于 `src/custom/<模块名>/`，如 apaas-custom-shipboard-electricity-cd、apaas-custom-enginecode） | `rslib build -w` |
+| [`script-example/vue-cli-script-template/`](./script-example/vue-cli-script-template/) | 未迁移的 vue-cli 旧工程（如 apaas-custom-technicalreview） | `vue-cli-service build --target lib --watch` |
 
-两个模板功能一致：静态资源服务（3000~3100 自动探测端口）+ `/sse` 变更通知 + 300ms 防抖合并推送；新模板额外做了 `NODE_ENV=development` 优化（buildCache 生效、跳过压缩），热更新重建更快。详细用法见 [`script-example/README.md`](./script-example/README.md)。
+三个模板共用公共模块 [`lib/`](./script-example/lib/)（日志 / 端口探测 / 静态服务 + SSE / 300ms 防抖监听），各自只保留两个差异点：apaas.json 解析路径和打包命令。rsbuild 模板还注入 `NODE_ENV=development`（buildCache 生效、跳过压缩），热更新重建更快。详细用法见 [`script-example/README.md`](./script-example/README.md)。

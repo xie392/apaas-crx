@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * vue-cli 旧工程热更新服务
- * 差异点：模块路径 src/custom/<模块名>/apaas.json，产物目录 <outputName>/，构建命令 vue-cli-service build --target lib --watch
+ * rsbuild 单仓热更新服务
+ * 差异点：模块路径 src/custom/<模块名>/apaas.json，产物目录 <outputName>/，构建命令 rslib build -w
  * 公共能力（日志/端口探测/静态服务/SSE/防抖监听）见 ../lib/
  */
 const fs = require("fs")
@@ -32,23 +32,18 @@ function resolveContext() {
 }
 
 // ---- 差异点 2：打包命令 ----
-function startBuild({ argv, apaasConfig, entryPath, staticDir }) {
+function startBuild({ argv, apaasConfig, entryPath }) {
   const buildProcess = spawn(
     "npx",
-    [
-      "vue-cli-service",
-      "build",
-      "--target",
-      "lib",
-      "--name",
-      apaasConfig.outputName,
-      "--dest",
-      staticDir,
-      entryPath,
-      "--watch",
-      ...argv
-    ],
+    ["rslib", "build", "-w", ...argv],
     {
+      env: {
+        ...process.env,
+        // 确保构建缓存生效、跳过压缩，加快热更新重建速度
+        NODE_ENV: "development",
+        PUBLIC_OUTPUT_NAME: apaasConfig.outputName,
+        PUBLIC_ENTRY: entryPath,
+      },
       detached: process.platform !== "win32",
     }
   )
@@ -63,7 +58,10 @@ function startBuild({ argv, apaasConfig, entryPath, staticDir }) {
 async function main() {
   const ctx = resolveContext()
 
-  const { clients } = await startHotServer({ staticDir: ctx.staticDir })
+  const { clients } = await startHotServer({
+    staticDir: ctx.staticDir,
+    extraPrefixes: [`/app/${ctx.apaasConfig.outputName}/`],
+  })
 
   const buildProcess = startBuild(ctx)
   const watcher = watchBuildOutput({ staticDir: ctx.staticDir, clients })
