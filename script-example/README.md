@@ -51,7 +51,18 @@ node scripts/build.js <模块名>       # 单次构建打 ZIP
 node scripts/run.cjs <模块名>        # 热更新开发服务
 ```
 
-依赖：`express`、`cors`、`chokidar`、`chalk`、`get-port`、`shelljs`、`zip-local`。
+### 依赖安装
+
+在业务项目根目录执行：
+
+```bash
+pnpm add -D express@^5.1.0 cors@^2.8.5 chokidar@^4.0.3 chalk@^4.1.2 get-port@^7.1.0 shelljs@^0.10.0 zip-local@^0.3.5
+```
+
+版本说明：
+- **chalk 必须用 v4**：v5 起改为 ESM-only，CJS 脚本 `require("chalk")` 会直接报错
+- **get-port 用 v7**：ESM-only 包，脚本内已用动态 `import()` 加载，无需额外处理
+- **express v5**：如项目里已有 express v4 也可用 v4，脚本未用到 v5 独有 API
 
 ## 注意事项
 
