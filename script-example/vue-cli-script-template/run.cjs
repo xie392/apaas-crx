@@ -10,6 +10,7 @@ const { spawn } = require("child_process")
 
 const { log, exitWithError } = require("../lib/utils.cjs")
 const { startHotServer, watchBuildOutput } = require("../lib/hot-server.cjs")
+const { loadEnvLocal, registerDevServer } = require("../lib/dev-registry.cjs")
 
 // ---- 差异点 1：解析路径 ----
 function resolveContext() {
@@ -64,13 +65,20 @@ function startBuild({ argv, apaasConfig, entryPath, staticDir }) {
 async function main() {
   const ctx = resolveContext()
 
-  const { clients } = await startHotServer({ staticDir: ctx.staticDir })
+  const { port, clients } = await startHotServer({ staticDir: ctx.staticDir })
 
   const buildProcess = startBuild(ctx)
   const watcher = watchBuildOutput({ staticDir: ctx.staticDir, clients })
 
-  const cleanup = () => {
+  const unregister = await registerDevServer({
+    packageName: ctx.apaasConfig.outputName,
+    devUrl: `http://127.0.0.1:${port}`,
+    env: loadEnvLocal(),
+  })
+
+  const cleanup = async () => {
     log.warning("接收到终止信号，正在关闭服务...")
+    if (unregister) await unregister()
     if (watcher) watcher.close()
     if (buildProcess && !buildProcess.killed) {
       try {
