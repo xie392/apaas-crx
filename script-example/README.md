@@ -84,6 +84,16 @@ DEV_TARGET_HOST=https://crm-fw.app.yuchai.com
 
 若不配置且插件内只有一个应用，则直接注入到该应用。
 
+### 真实工程示例
+
+以 `apaas-custom-crm-web`（rsbuild monorepo 模板）为例，在工程根目录创建 `.env.local`，只写一行即可锁定目标应用：
+
+```
+DEV_APP_ID=8124cfa7-19a4-418d-91ea-9ec2ff63f46f
+```
+
+运行 `node scripts/run.cjs <模块名>` 后，dev server 会把该 `DEV_APP_ID` 随 `outputName + devUrl` 一起注册到本地注册中心，插件自动将 `devUrl` 写入该应用的"开发配置"，浏览器打开插件即可看到热更新效果。
+
 ## 注意事项
 
 - 端口 3000~3100 自动探测，devUrl 随实际端口自动注册，无需手动维护

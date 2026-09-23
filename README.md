@@ -46,7 +46,28 @@ content script 发 `DEV_FILE_CHANGED` 消息给 background，background 重新 f
 
 ### 1. 安装插件
 
-在 Chrome 中打开 `chrome://extensions/`，开启「开发者模式」，加载已解压的扩展程序（或加载构建产物）。
+#### 1.1 开发模式（本地调试）
+
+```bash
+# 安装依赖
+pnpm install
+
+# 开发构建（watch 模式，产物目录 build/chrome-mv3-dev）
+pnpm dev
+
+# 或一次性生产构建（产物目录 build/chrome-mv3-prod）
+pnpm build
+```
+
+然后在 Chrome 中加载：
+
+1. 打开 `chrome://extensions/`，开启右上角「开发者模式」
+2. 点击「加载已解压的扩展程序」，选择本项目的 `build/chrome-mv3-dev`（或 `build/chrome-mv3-prod`）目录
+3. `pnpm dev` watch 模式下代码变更会自动重编译，但**需要在 `chrome://extensions/` 点击扩展的刷新按钮重载**后才会生效（Service Worker 不会热更新）
+
+#### 1.2 安装打包好的扩展
+
+如果没有本地源码，可直接向维护者索取 `build/chrome-mv3-prod.zip`，解压后按上述「加载已解压的扩展程序」方式加载。
 
 ### 2. 方式一：上传压缩包替换（静态替换）
 
@@ -60,6 +81,36 @@ content script 发 `DEV_FILE_CHANGED` 消息给 background，background 重新 f
 2. 在插件中为应用添加开发配置（devUrl 填本地服务地址，如 `http://127.0.0.1:3000`）
 3. 打开目标页面，页面加载的即是本地构建产物
 4. 之后修改代码并保存 → 本地自动重新构建 → 页面自动热更新，无需手动刷新
+
+#### 自动注册（免手动添加开发配置）
+
+dev server 启动时会自动向注册中心（`http://127.0.0.1:9876/apps`）注册，插件后台每 5 秒拉取注册信息并自动写入对应应用的开发配置，**无需手动在插件里添加 devUrl**。要让自动注册匹配到正确的应用，在业务项目根目录 `.env.local` 里配置：
+
+```bash
+# 应用 ID：从插件「编辑应用」页面的「应用 ID」复制过来
+DEV_APP_ID=8124cfa7-19a4-418d-91ea-9ec2ff63f46f
+# 可选：按 URL 规则匹配宿主应用
+DEV_TARGET_HOST=https://crm-fw.yuchaiqas.com
+```
+
+#### 同时开发多个模块
+
+多个 dev server 可以**同时启动**（端口被占用时会自动切换到 3001、3002…），每个模块分别注册，插件会为每个包生成独立的重定向规则：
+
+```bash
+# 终端 1：启动模块 A
+node scripts/server.js <模块A名>   # -> http://127.0.0.1:3000
+
+# 终端 2：启动模块 B
+node scripts/server.js <模块B名>   # -> http://127.0.0.1:3001
+```
+
+页面只会显示当前路由实际用到的包的替换；某个包的请求没有被 307 重定向时，可在扩展 Service Worker 控制台执行 `chrome.declarativeNetRequest.getDynamicRules(r => console.log(r))` 检查对应规则是否存在。
+
+#### 排错提示
+
+- 若控制台出现 `Rule with id xxx does not have a unique ID` 或 `Invalid type: expected integer`：规则 ID 生成异常（历史版本 bug，v0.0.8+ 已修复），重载扩展即可
+- 修改插件源码后必须到 `chrome://extensions/` 重载扩展，Service Worker 不会热更新
 
 ### 4. 注意事项
 

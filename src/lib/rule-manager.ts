@@ -1,3 +1,11 @@
+// 规则 ID 必须全局唯一且在 int32 范围内（上限 2147483647）：
+// 秒级时间戳作起点，同秒内多条规则用递增避免重复，
+// 否则 updateDynamicRules 整批被拒绝（"does not have a unique ID"）
+let lastRuleId = Math.floor(Date.now() / 1000)
+function generateUniqueRuleId(): number {
+  return ++lastRuleId
+}
+
 /**
  * 生成重定向规则
  * @param rulesName 规则名称
@@ -9,7 +17,7 @@ export function generateRedirectRules(
   domain: string
 ): chrome.declarativeNetRequest.Rule {
   return {
-    id: Math.floor(Date.now() / 1000),
+    id: generateUniqueRuleId(),
     priority: 1,
     action: {
       type: chrome.declarativeNetRequest.RuleActionType.REDIRECT,
@@ -48,7 +56,7 @@ export function generateBlockRules(
   ruleId?: number
 ): chrome.declarativeNetRequest.Rule {
   return {
-    id: ruleId ?? Math.floor(Date.now() / 1000),
+    id: ruleId ?? generateUniqueRuleId(),
     priority: 1,
     action: {
       type: chrome.declarativeNetRequest.RuleActionType.BLOCK
