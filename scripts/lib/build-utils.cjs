@@ -1,4 +1,5 @@
 const fs = require("fs")
+const zlib = require("zlib")
 const shell = require("shelljs")
 const zipper = require("zip-local")
 const chalk = require("chalk")
@@ -29,10 +30,11 @@ function copyConfigAndAssets({ configPath, apaasConfig, outputPath }) {
 }
 
 /**
- * 统计 JS 产物体积并告警
- * 超过 1MB 红色警告建议拆包，超过 500KB 黄色提示关注
+ * 统计 JS 产物体积并告警（仅警告，不阻断）
+ * 阈值基于 gzip 后体积（更贴近网络传输耗时），同时展示原始体积（反映解析/执行耗时）
+ * JS 超过 512KB(gzip) 警告建议拆包，超过 300KB(gzip) 提示关注
  */
-function reportJsSize(outputPath, { warnKb = 500, errorKb = 1024 } = {}) {
+function reportJsSize(outputPath, { warnKb = 300, errorKb = 512 } = {}) {
   if (!fs.existsSync(outputPath)) return
 
   log.info("构建产物大小统计:")
@@ -40,16 +42,24 @@ function reportJsSize(outputPath, { warnKb = 500, errorKb = 1024 } = {}) {
     const filePath = resolvePath(outputPath, file)
     if (!fs.existsSync(filePath) || !fs.lstatSync(filePath).isFile()) return
 
-    const sizeKb = fs.statSync(filePath).size / 1024
+    const rawBuffer = fs.readFileSync(filePath)
+    const sizeKb = rawBuffer.length / 1024
     const size = sizeKb.toFixed(2)
-    if (file.endsWith(".js") && sizeKb >= errorKb) {
-      console.log(chalk.red(`  ${file}: ${size} KB`))
-      log.error(`${file} 体积为 ${size} KB，已超过 ${errorKb}KB，建议拆分为新的自开发包，避免影响页面加载性能。`)
-    } else if (file.endsWith(".js") && sizeKb >= warnKb) {
-      console.log(chalk.yellow(`  ${file}: ${size} KB`))
-      log.warning(`${file} 体积为 ${size} KB，已超过 ${warnKb}KB，建议关注或拆分。`)
-    } else {
+
+    if (!file.endsWith(".js")) {
       log.info(`  ${file}: ${size} KB`)
+      return
+    }
+
+    const gzipSize = (zlib.gzipSync(rawBuffer).length / 1024).toFixed(2)
+    if (gzipSize >= errorKb) {
+      console.log(chalk.yellow(`  ${file}: ${size} KB (gzip: ${gzipSize} KB)`))
+      log.warning(`${file} gzip 后体积为 ${gzipSize} KB，已超过 ${errorKb}KB，建议拆分为新的自开发包，避免影响页面加载性能。`)
+    } else if (gzipSize >= warnKb) {
+      console.log(chalk.yellow(`  ${file}: ${size} KB (gzip: ${gzipSize} KB)`))
+      log.warning(`${file} gzip 后体积为 ${gzipSize} KB，已超过 ${warnKb}KB，建议关注或拆分。`)
+    } else {
+      log.info(`  ${file}: ${size} KB (gzip: ${gzipSize} KB)`)
     }
   })
 }
